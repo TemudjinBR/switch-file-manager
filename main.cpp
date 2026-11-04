@@ -760,7 +760,7 @@ static bool copyFile(const std::string& s, const std::string& d) {
     if (!out) { fclose(in); g_err = "Não foi possível criar: " + baseName(d); return false; }
     const size_t BS = 1 << 20;
     char* buf = (char*)malloc(BS);
-    if (!buf) { fclose(in); fclose(out); g_err = "Memória insuficiente."; return false; }
+    if (!buf) { fclose(in); fclose(out); remove(d.c_str()); g_err = "Memória insuficiente."; return false; }
     bool ok = true;
     size_t n;
     while ((n = fread(buf, 1, BS, in)) > 0) {
@@ -771,8 +771,9 @@ static bool copyFile(const std::string& s, const std::string& d) {
     }
     if (ferror(in)) { ok = false; g_err = "Falha ao ler: " + baseName(s); }
     free(buf);
-    fclose(in);
-    fclose(out);
+    if (fclose(in) != 0) { ok = false; g_err = "Falha ao fechar arquivo de origem: " + baseName(s); }
+    // fclose pode detectar erro de gravação mesmo quando fwrite não detectou.
+    if (fclose(out) != 0) { ok = false; g_err = "Falha ao finalizar gravação: " + baseName(d); }
     if (!ok) remove(d.c_str());
     return ok;
 }
@@ -781,7 +782,10 @@ static bool copyTree(const std::string& s, const std::string& d) {
     if (g_cancel) return false;
     g_pName = baseName(s);
     if (isDir(s)) {
-        mkdir(d.c_str(), 0777);
+        if (mkdir(d.c_str(), 0777) != 0) {
+            g_err = "Não foi possível criar a pasta: " + baseName(d);
+            return false;
+        }
         for (auto& n : listNames(s))
             if (!copyTree(join(s, n), join(d, n))) return false;
         return true;
@@ -791,14 +795,23 @@ static bool copyTree(const std::string& s, const std::string& d) {
 
 static bool removeTree(const std::string& p) {
     if (isDir(p)) {
-        for (auto& n : listNames(p)) removeTree(join(p, n));
+        // Não ocultar falhas em filhos: uma remoção parcial deve ser informada.
+        bool ok = true;
+        for (auto& n : listNames(p))
+            if (!removeTree(join(p, n))) ok = false;
         g_pName = baseName(p);
         tickProgress();
-        return rmdir(p.c_str()) == 0;
+        if (rmdir(p.c_str()) != 0) ok = false;
+        if (!ok) g_err = "Não foi possível apagar completamente: " + baseName(p);
+        return ok;
     }
     g_pName = baseName(p);
     tickProgress();
-    return remove(p.c_str()) == 0;
+    if (remove(p.c_str()) != 0) {
+        g_err = "Não foi possível apagar: " + baseName(p);
+        return false;
+    }
+    return true;
 }
 
 static bool askText(const char* guide, const std::string& init, std::string& out) {
@@ -1269,6 +1282,11 @@ static void doCopyMove(bool move) {
         } else {
             std::string from = join(s.path, e.name);
             std::string to = uniqueName(join(d.path, e.name));
+            if (pathExists(to)) {
+                fail++;
+                g_err = "Destino já existe; nenhum arquivo foi sobrescrito: " + e.name;
+                continue;
+            }
             if (e.dir && (to == from || to.compare(0, from.size() + 1, from + "/") == 0)) {
                 fail++;
                 g_err = "Não é possível copiar uma pasta para dentro dela mesma.";
@@ -1316,8 +1334,12 @@ static void doDelete() {
     g_pTitle = "Apagando...";
     g_pDone = 0;
     g_pTotal = 0;
-    for (auto& e : sel) removeTree(join(p.path, e.name));
+    g_err.clear();
+    int failed = 0;
+    for (auto& e : sel) if (!removeTree(join(p.path, e.name))) failed++;
     reloadBoth();
+    if (failed) message("Exclusão incompleta", std::to_string(failed) +
+        " item(ns) não puderam ser removidos.\n" + wrapText(g_err, 48));
 }
 
 static bool validName(const std::string& n) {
