@@ -1,4 +1,4 @@
-// Switch File Manager v0.3.0 - interface Commander, dois paineis e operacoes seguras
+// Switch File Manager v0.6.0 - interface Commander, dois paineis e operacoes seguras
 // C++ / libnx (renderização por software, sem bibliotecas externas) + Google Drive
 
 #include <switch.h>
@@ -682,10 +682,32 @@ static void message(const std::string& title, const std::string& text) {
 // progresso
 static std::string g_pTitle, g_pName, g_err;
 static u64 g_pDone = 0, g_pTotal = 0, g_lastUI = 0;
+static u64 g_pStartMs = 0;
+static u64 g_pFilesDone = 0, g_pFilesTotal = 0;
+static bool g_pCountFiles = false;
+static u64 progressNowMs() { return armTicksToNs(armGetSystemTick()) / 1000000ULL; }
+static std::string formatDuration(u64 seconds) {
+    char b[32];
+    if (seconds >= 3600) snprintf(b, sizeof b, "%lluh %02llum", (unsigned long long)(seconds / 3600), (unsigned long long)((seconds / 60) % 60));
+    else snprintf(b, sizeof b, "%llum %02llus", (unsigned long long)(seconds / 60), (unsigned long long)(seconds % 60));
+    return b;
+}
+static void beginTransferProgress() {
+    g_pDone = 0; g_pTotal = 0; g_lastUI = 0;
+    g_pFilesDone = 0; g_pFilesTotal = 0; g_pCountFiles = true;
+    g_pStartMs = progressNowMs();
+}
+static void countLocalFiles(const std::string& path) {
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) return;
+    if (!S_ISDIR(st.st_mode)) { ++g_pFilesTotal; return; }
+    for (const auto& name : listNames(path)) countLocalFiles(join(path, name));
+}
+
 
 static void drawProgressOverlay() {
     fillRect(0, 0, W, H, Col{0, 0, 0, 175});
-    int bw = 700, bh = 230, bx = (W - bw) / 2, by = (H - bh) / 2;
+    int bw = 700, bh = 260, bx = (W - bw) / 2, by = (H - bh) / 2;
     fillRound(bx, by, bw, bh, 18, C_PANEL);
     drawText(fL, g_pTitle, bx + 30, by + 24, C_TXT);
     drawText(fS, g_pName, bx + 30, by + 80, C_DIM, bw - 60);
@@ -700,15 +722,31 @@ static void drawProgressOverlay() {
         drawText(fM, pc, bx + bw - 30, by + 150, C_TXT, 0, 1);
         drawText(fS, fmtSize(g_pDone) + " / " + fmtSize(g_pTotal), bx + 30, by + 156, C_DIM);
     }
-    drawText(fS, "Segure B para cancelar", bx + bw / 2, by + 192, C_DIM, 0, 2);
+    if (g_pCountFiles) {
+        std::string files = "Arquivos: " + std::to_string(g_pFilesDone) + " / " + std::to_string(g_pFilesTotal);
+        drawText(fS, files, bx + 30, by + 184, C_DIM);
+    }
+    if (g_pStartMs > 0 && g_pDone > 0) {
+        u64 elapsed = progressNowMs() - g_pStartMs;
+        if (elapsed >= 1000) {
+            double bytesPerSecond = (double)g_pDone * 1000.0 / (double)elapsed;
+            std::string stats = "Velocidade media: " + fmtSize((u64)bytesPerSecond) + "/s";
+            if (g_pTotal > g_pDone && bytesPerSecond >= 1024.0) {
+                u64 eta = (u64)((double)(g_pTotal - g_pDone) / bytesPerSecond);
+                stats += "  |  Restante estimado: " + formatDuration(eta);
+            }
+            drawText(fS, stats, bx + 30, by + 208, C_DIM, bw - 60);
+        }
+    }
+    drawText(fS, "B: solicitar cancelamento", bx + bw - 30, by + 184, C_DIM, 0, 1);
 }
 
 static void tickProgress(bool force = false) {
-    u64 now = armTicksToNs(armGetSystemTick()) / 1000000ULL;
+    u64 now = progressNowMs();
     if (!force && now - g_lastUI < 80) return;
     g_lastUI = now;
     padUpdate(&pad);
-    if (padGetButtons(&pad) & HidNpadButton_B) g_cancel = true;
+    if (padGetButtonsDown(&pad) & HidNpadButton_B) g_cancel = true;
     pump();
     drawMain();
     drawProgressOverlay();
@@ -775,6 +813,7 @@ static bool copyFile(const std::string& s, const std::string& d) {
     // fclose pode detectar erro de gravação mesmo quando fwrite não detectou.
     if (fclose(out) != 0) { ok = false; g_err = "Falha ao finalizar gravação: " + baseName(d); }
     if (!ok) remove(d.c_str());
+    else if (g_pCountFiles) ++g_pFilesDone;
     return ok;
 }
 
@@ -1047,6 +1086,7 @@ static bool dlTree(const Entry& e, const std::string& dstDir, std::string& outPa
     it.name = e.name;
     it.size = e.size;
     if (!gd::downloadFile(it, dst, &g_bridge)) { g_err = gd::lastError(); return false; }
+    if (g_pCountFiles) ++g_pFilesDone;
     return true;
 }
 
@@ -1062,6 +1102,7 @@ static bool ulTree(const std::string& src, const std::string& parentId) {
         return true;
     }
     if (!gd::uploadFile(src, parentId, baseName(src), &g_bridge)) { g_err = gd::lastError(); return false; }
+    if (g_pCountFiles) ++g_pFilesDone;
     return true;
 }
 
@@ -1314,14 +1355,21 @@ static void doCopyMove(bool move) {
     g_err.clear();
     g_skipped = 0;
     g_pTitle = move ? "Movendo..." : (s.drive ? "Baixando..." : (d.drive ? "Enviando..." : "Copiando..."));
-    g_pDone = 0;
-    g_pTotal = 0;
+    beginTransferProgress();
     if (s.drive) {
+        // O total de arquivos do Drive exigiria uma varredura adicional da API.
+        g_pCountFiles = false;
         showBusy("Calculando o tamanho...");
         for (auto& e : sel) g_pTotal += driveTreeSize(e, 0);
     } else {
-        for (auto& e : sel) g_pTotal += treeSize(join(s.path, e.name));
+        for (auto& e : sel) {
+            const std::string src = join(s.path, e.name);
+            g_pTotal += treeSize(src);
+            countLocalFiles(src);
+        }
     }
+    // Excluir tempo gasto na contagem inicial da velocidade media.
+    g_pStartMs = progressNowMs();
     tickProgress(true);
 
     int fail = 0;
@@ -1357,6 +1405,9 @@ static void doCopyMove(bool move) {
                 continue;
             }
             if (move && rename(from.c_str(), to.c_str()) == 0) {
+                // Renomeacao no mesmo volume e instantanea, sem transferencia de bytes.
+                g_pDone += treeSize(to);
+                g_pFilesDone += 1;
                 ok = true;
             } else {
                 ok = copyTree(from, to);
