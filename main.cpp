@@ -793,6 +793,60 @@ static bool copyTree(const std::string& s, const std::string& d) {
     return copyFile(s, d);
 }
 
+// Verificação byte a byte, com memória limitada, antes de remover a origem.
+// Não é uma verificação criptográfica; compara integralmente os dados lidos.
+static bool verifyFileCopy(const std::string& source, const std::string& target) {
+    FILE* a = fopen(source.c_str(), "rb");
+    if (!a) { g_err = "Falha ao abrir origem para conferir: " + baseName(source); return false; }
+    FILE* b = fopen(target.c_str(), "rb");
+    if (!b) { fclose(a); g_err = "Falha ao abrir destino para conferir: " + baseName(target); return false; }
+    const size_t chunk = 64 * 1024;
+    char* x = (char*)malloc(chunk);
+    char* y = (char*)malloc(chunk);
+    if (!x || !y) {
+        free(x); free(y); fclose(a); fclose(b);
+        g_err = "Memória insuficiente para verificar a cópia.";
+        return false;
+    }
+    bool ok = true;
+    while (true) {
+        if (g_cancel) { ok = false; break; }
+        size_t nx = fread(x, 1, chunk, a);
+        size_t ny = fread(y, 1, chunk, b);
+        if (ferror(a) || ferror(b) || nx != ny || (nx && memcmp(x, y, nx) != 0)) {
+            ok = false; break;
+        }
+        if (!nx) break;
+        g_pName = "Verificando: " + baseName(source);
+        tickProgress();
+    }
+    free(x); free(y);
+    if (fclose(a) != 0 || fclose(b) != 0) ok = false;
+    if (!ok && !g_cancel) g_err = "Cópia diferente da origem ou erro de leitura: " + baseName(source);
+    return ok;
+}
+
+static bool verifyTreeCopy(const std::string& source, const std::string& target) {
+    if (g_cancel) return false;
+    bool dir = isDir(source);
+    if (dir != isDir(target)) {
+        g_err = "Tipo diferente no destino: " + baseName(source);
+        return false;
+    }
+    if (!dir) return verifyFileCopy(source, target);
+    auto names = listNames(source);
+    auto copied = listNames(target);
+    std::sort(names.begin(), names.end());
+    std::sort(copied.begin(), copied.end());
+    if (names != copied) {
+        g_err = "Conteúdo diferente na pasta: " + baseName(source);
+        return false;
+    }
+    for (const auto& n : names)
+        if (!verifyTreeCopy(join(source, n), join(target, n))) return false;
+    return true;
+}
+
 static bool removeTree(const std::string& p) {
     if (isDir(p)) {
         // Não ocultar falhas em filhos: uma remoção parcial deve ser informada.
@@ -1248,6 +1302,10 @@ static void doCopyMove(bool move) {
         message("Aviso", "Copiar de uma pasta do Drive para outra ainda não é suportado.\nUse o outro painel para o cartão SD.");
         return;
     }
+    if (move && (s.drive || d.drive)) {
+        message("Movimentação protegida", "Mover entre cartão SD e Google Drive está temporariamente bloqueado.\nUse Copiar e confira os arquivos antes de excluir a origem.");
+        return;
+    }
     if (!s.drive && !d.drive && move && s.path == d.path) {
         message("Aviso", "Origem e destino são a mesma pasta.\nAbra outra pasta no painel ao lado.");
         return;
@@ -1277,8 +1335,14 @@ static void doCopyMove(bool move) {
             if (ok && move && !e.gdoc && !gd::trashItem(e.id)) { ok = false; g_err = gd::lastError(); }
         } else if (d.drive) {
             std::string from = join(s.path, e.name);
-            ok = ulTree(from, d.driveId());
-            if (ok && move) ok = removeTree(from);
+            // A API de upload não oferece aqui uma conferência integral do arquivo remoto.
+            // Por segurança, não remover a origem em operações de mover para o Drive.
+            if (move) {
+                ok = false;
+                g_err = "Mover para o Drive está bloqueado: use Copiar e confira o destino antes de apagar a origem.";
+            } else {
+                ok = ulTree(from, d.driveId());
+            }
         } else {
             std::string from = join(s.path, e.name);
             std::string to = uniqueName(join(d.path, e.name));
@@ -1296,8 +1360,16 @@ static void doCopyMove(bool move) {
                 ok = true;
             } else {
                 ok = copyTree(from, to);
-                if (!ok) removeTree(to);
-                else if (move) ok = removeTree(from);
+                if (ok && move) ok = verifyTreeCopy(from, to);
+                if (!ok) {
+                    // Em caso de falha, manter a origem e tentar limpar a cópia incompleta.
+                    std::string cause = g_err;
+                    removeTree(to);
+                    g_err = cause;
+                } else if (move) {
+                    // Só excluir a origem depois da comparação integral bem-sucedida.
+                    ok = removeTree(from);
+                }
             }
         }
         if (!ok) fail++;
