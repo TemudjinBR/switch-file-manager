@@ -1,4 +1,4 @@
-// Switch File Manager - Etapa 1: gerenciador de arquivos com dois painéis
+// Switch File Manager v0.2.0 - interface Commander, dois paineis e operacoes seguras
 // C++ / libnx (renderização por software, sem bibliotecas externas) + Google Drive
 
 #include <switch.h>
@@ -29,12 +29,12 @@ struct Col { uint8_t r, g, b, a; };
 static const int W = 1280, H = 720;
 static const int ROWS = 10, ROW_H = 46, LIST_TOP = 116, PANE_Y = 72, PANE_H = 560, PANE_W = 610;
 
-static const Col C_BG    = {14, 17, 26, 255};
-static const Col C_PANEL = {24, 29, 43, 255};
-static const Col C_PAN2  = {34, 41, 61, 255};
-static const Col C_SEL   = {38, 50, 82, 255};
-static const Col C_ACC   = {86, 156, 255, 255};
-static const Col C_ACCD  = {52, 104, 196, 255};
+static const Col C_BG    = {11, 15, 24, 255};
+static const Col C_PANEL = {22, 29, 43, 255};
+static const Col C_PAN2  = {35, 47, 66, 255};
+static const Col C_SEL   = {43, 57, 77, 255};
+static const Col C_ACC   = {62, 174, 241, 255};
+static const Col C_ACCD  = {35, 105, 156, 255};
 static const Col C_TXT   = {232, 237, 247, 255};
 static const Col C_DIM   = {125, 137, 163, 255};
 static const Col C_RED   = {244, 106, 106, 255};
@@ -485,12 +485,13 @@ static void drawPane(Pane& p, int x, bool act) {
     int y = PANE_Y, w = PANE_W, h = PANE_H;
     if (act) fillRound(x - 3, y - 3, w + 6, h + 6, 17, C_ACC);
     fillRound(x, y, w, h, 14, C_PANEL);
+    fillRound(x + 12, y + 5, 5, 29, 2, act ? C_GRN : C_DIM);
 
     {
         std::string sl = p.sortLabel();
         int sw = textWidth(fS, sl);
         drawText(fS, sl, x + w - 18, y + 9, C_DIM, 0, 1);
-        drawText(fS, p.path, x + 18, y + 9, p.drive ? (act ? C_GRN : C_DIM) : (act ? C_TXT : C_DIM), w - 36 - sw - 16);
+        drawText(fS, p.path, x + 27, y + 9, p.drive ? (act ? C_GRN : C_DIM) : (act ? C_TXT : C_DIM), w - 45 - sw - 16);
     }
     fillRect(x + 12, y + 42, w - 24, 2, C_PAN2);
 
@@ -503,7 +504,10 @@ static void drawPane(Pane& p, int x, bool act) {
         Entry& e = p.items[i];
         int ry = LIST_TOP + (i - p.scroll) * ROW_H;
         if (i == p.cur) fillRound(x + 8, ry + 2, w - 16, ROW_H - 4, 10, act ? C_ACCD : C_SEL);
-        if (p.marks.count(e.key)) fillRound(x + 10, ry + 8, 5, ROW_H - 16, 2, C_YEL);
+        if (p.marks.count(e.key)) {
+            fillRound(x + 10, ry + 8, 7, ROW_H - 16, 3, C_YEL);
+            fillRound(x + 19, ry + 15, 4, ROW_H - 30, 2, C_YEL);
+        }
         if (e.dir) {
             fillRound(x + 26, ry + 13, 26, 20, 5, C_ACC);
             fillRound(x + 26, ry + 10, 12, 8, 3, C_ACC);
@@ -544,14 +548,16 @@ static const Btn BTNS[NBTN] = {
 static void drawMain() {
     fillRect(0, 0, W, H, C_BG);
 
-    drawText(fL, "Switch File Manager", 24, 14, C_TXT);
+    fillRound(20, 15, 6, 35, 3, C_RED);
+    fillRound(29, 15, 6, 35, 3, C_ACC);
+    drawText(fL, "Switch File Manager", 47, 14, C_TXT);
     {
         int n = (int)selection(panes[active]).size();
         if (!panes[active].marks.empty())
-            drawText(fS, std::to_string(n) + " marcado(s)", 330, 24, C_YEL);
+            drawText(fS, std::to_string(n) + " marcado(s)", 370, 24, C_YEL);
     }
     if (!panes[active].filter.empty())
-        drawText(fS, "Busca: " + panes[active].filter, 560, 24, C_YEL, 330);
+        drawText(fS, "Busca: " + panes[active].filter, 600, 24, C_YEL, 260);
     if (g_total > 0) {
         std::string t = "Livre " + fmtSize(g_free) + " de " + fmtSize(g_total);
         drawText(fS, t, W - 24, 14, C_DIM, 0, 1);
@@ -566,9 +572,10 @@ static void drawMain() {
     for (int i = 0; i < NBTN; i++) {
         int bx = 22 + i * 178;
         fillRound(bx, 646, 168, 58, 12, C_PANEL);
+        fillRound(bx + 8, 655, 44, 39, 9, C_PAN2);
         int kw = textWidth(fM, BTNS[i].key);
-        int lx = bx + 14 + std::max(kw, 22) + 14;
-        drawText(fM, BTNS[i].key, bx + 14, 660, C_ACC);
+        int lx = bx + 58;
+        drawText(fM, BTNS[i].key, bx + 30, 660, C_ACC, 40, 2);
         drawText(fM, BTNS[i].label, lx, 660, C_TXT, bx + 160 - lx);
     }
 }
