@@ -17,7 +17,7 @@ INCLUDES		:=	.
 
 APP_TITLE	:=	Switch File Manager
 APP_AUTHOR	:=	TemudjinBR
-APP_VERSION	:=	0.1.0
+APP_VERSION	:=	0.10.0
 
 
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
@@ -44,7 +44,7 @@ export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 CFILES		:=	miniz.c
-CPPFILES	:=	main.cpp gdrive.cpp zipx.cpp
+CPPFILES	:=	main.cpp gdrive.cpp zipx.cpp wifi_transfer.cpp
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 
 ifeq ($(strip $(CPPFILES)),)

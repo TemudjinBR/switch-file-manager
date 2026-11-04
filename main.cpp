@@ -1,4 +1,4 @@
-// Switch File Manager v0.7.0 - interface Commander, dois paineis e operacoes seguras
+// Switch File Manager v0.10.0 - interface Commander, dois paineis e operacoes seguras
 // C++ / libnx (renderização por software, sem bibliotecas externas) + Google Drive
 
 #include <switch.h>
@@ -24,6 +24,7 @@
 #include "stb_truetype.h"
 #include "gdrive.h"
 #include "zipx.h"
+#include "wifi_transfer.h"
 
 struct Col { uint8_t r, g, b, a; };
 static const int W = 1280, H = 720;
@@ -1048,23 +1049,35 @@ static void toggleDrive() {
     p.reload();
 }
 
-static u64 driveTreeSize(const Entry& e, int depth) {
-    if (e.gdoc) return 0;
-    if (!e.dir) return e.size;
-    if (depth > 20) return 0;
-    std::vector<gd::Item> v;
-    if (!gd::listFolder(e.id, v)) return 0;
-    u64 t = 0;
-    for (auto& it : v) {
-        Entry c;
-        c.name = it.name;
-        c.id = it.id;
-        c.dir = it.dir;
-        c.gdoc = it.gdoc;
-        c.size = it.size;
-        t += driveTreeSize(c, depth + 1);
+// Preflight: calcula o total antes do download e falha de forma explícita
+// quando a listagem do Drive não está completa. Não modifica arquivos locais.
+static bool scanDriveTree(const Entry& e, int depth, std::set<std::string>& seen) {
+    if (g_cancel) { g_err = "Operação cancelada durante a análise do Drive."; return false; }
+    if (e.gdoc) return true; // formatos nativos Google não são exportados nesta versão
+    if (!e.dir) {
+        if (UINT64_MAX - g_pTotal < e.size) { g_err = "Tamanho total excede o limite."; return false; }
+        g_pTotal += e.size;
+        ++g_pFilesTotal;
+        return true;
     }
-    return t;
+    if (depth > 20) { g_err = "Pasta do Drive excede 20 níveis."; return false; }
+    if (e.id.empty() || !seen.insert(e.id).second) {
+        g_err = "Pasta repetida ou identificador inválido no Drive."; return false;
+    }
+    std::vector<gd::Item> items;
+    if (!gd::listFolder(e.id, items)) {
+        g_err = "Falha ao listar " + e.name + ": " + gd::lastError();
+        seen.erase(e.id);
+        return false;
+    }
+    for (const auto& it : items) {
+        Entry child;
+        child.name = it.name; child.id = it.id; child.dir = it.dir;
+        child.gdoc = it.gdoc; child.size = it.size;
+        if (!scanDriveTree(child, depth + 1, seen)) { seen.erase(e.id); return false; }
+    }
+    seen.erase(e.id);
+    return true;
 }
 
 // baixa um item (arquivo ou pasta) do Drive para dentro de dstDir
@@ -1075,8 +1088,11 @@ static bool dlTree(const Entry& e, const std::string& dstDir, std::string& outPa
     std::string dst = uniqueName(join(dstDir, safeName(e.name)));
     if (depth == 0) outPath = dst;
     if (e.dir) {
-        if (depth > 20) return true;
-        mkdir(dst.c_str(), 0777);
+        if (depth > 20) { g_err = "Pasta do Drive excede 20 níveis."; return false; }
+        if (mkdir(dst.c_str(), 0777) != 0) {
+            g_err = "Não foi possível criar pasta no SD: " + dst;
+            return false;
+        }
         std::vector<gd::Item> v;
         if (!gd::listFolder(e.id, v)) { g_err = gd::lastError(); return false; }
         for (auto& it : v) {
@@ -1367,10 +1383,16 @@ static void doCopyMove(bool move) {
     g_pTitle = move ? "Movendo..." : (s.drive ? "Baixando..." : (d.drive ? "Enviando..." : "Copiando..."));
     beginTransferProgress();
     if (s.drive) {
-        // O total de arquivos do Drive exigiria uma varredura adicional da API.
-        g_pCountFiles = false;
-        showBusy("Calculando o tamanho...");
-        for (auto& e : sel) g_pTotal += driveTreeSize(e, 0);
+        showBusy("Analisando pastas e arquivos do Drive...");
+        std::set<std::string> seen;
+        bool scanOk = true;
+        for (const auto& e : sel) {
+            if (!scanDriveTree(e, 0, seen)) { scanOk = false; break; }
+        }
+        if (!scanOk) {
+            message("Google Drive", "Download não iniciado. " + wrapText(g_err, 52));
+            return;
+        }
     } else {
         for (auto& e : sel) {
             const std::string src = join(s.path, e.name);
@@ -1753,12 +1775,115 @@ static void selectionMenu() {
     }
 }
 
+// Fila v0.8.0: instantâneos locais; nenhuma operação ocorre ao adicionar.
+struct QueuedTransfer {
+    std::string source, destination;
+    std::vector<Entry> entries;
+    bool move = false;
+};
+static std::vector<QueuedTransfer> g_transferQueue;
+static const size_t QUEUE_LIMIT = 20;
+
+static void enqueueTransfer(bool move) {
+    Pane& source = panes[active];
+    Pane& destination = panes[1 - active];
+    if (source.drive || destination.drive) {
+        message("Fila local", "A fila aceita apenas transferências entre pastas do cartão SD nesta versão. Para Google Drive, use a operação direta.");
+        return;
+    }
+    auto chosen = selection(source);
+    if (chosen.empty()) { message("Fila", "Selecione um arquivo ou pasta primeiro."); return; }
+    if (source.path == destination.path) {
+        message("Fila", "Abra pastas diferentes nos dois painéis."); return;
+    }
+    if (g_transferQueue.size() >= QUEUE_LIMIT) {
+        message("Fila cheia", "Execute ou limpe a fila antes de adicionar mais tarefas."); return;
+    }
+    QueuedTransfer job;
+    job.source = source.path;
+    job.destination = destination.path;
+    job.entries = chosen;
+    job.move = move;
+    g_transferQueue.push_back(job);
+    message("Adicionado à fila", std::to_string(chosen.size()) + " item(ns). Tarefas na fila: " + std::to_string(g_transferQueue.size()) + ". Nenhum arquivo foi alterado.");
+}
+
+static void runTransferQueue() {
+    if (g_transferQueue.empty()) { message("Fila vazia", "Adicione tarefas antes de executar."); return; }
+    // Manter a interface do usuário e suas marcações intactas ao processar a fila.
+    Pane saved0 = panes[0], saved1 = panes[1];
+    int savedActive = active;
+    size_t finished = 0;
+    bool interrupted = false;
+    while (!g_transferQueue.empty()) {
+        QueuedTransfer job = g_transferQueue.front();
+        Pane source, destination;
+        source.path = job.source;
+        destination.path = job.destination;
+        source.items = job.entries;
+        source.cur = 0;
+        for (const auto& e : job.entries) source.marks.insert(e.key);
+        panes[0] = source;
+        panes[1] = destination;
+        active = 0;
+        // doCopyMove verifica destino e preserva a origem em falhas de cópia.
+        doCopyMove(job.move);
+        interrupted = g_cancel || !g_err.empty();
+        if (interrupted) break;
+        g_transferQueue.erase(g_transferQueue.begin());
+        ++finished;
+    }
+    panes[0] = saved0;
+    panes[1] = saved1;
+    active = savedActive;
+    reloadBoth();
+    if (interrupted) {
+        message("Fila interrompida", std::to_string(finished) + " tarefa(s) concluída(s). A tarefa interrompida e as restantes continuam na fila. Confira os arquivos antes de tentar novamente.");
+    } else {
+        message("Fila concluída", std::to_string(finished) + " tarefa(s) processada(s).");
+    }
+}
+
+static void transferQueueMenu() {
+    const std::vector<std::string> options = {
+        "Adicionar cópia do painel ativo", "Adicionar movimentação do painel ativo",
+        "Executar fila", "Ver tarefas pendentes", "Limpar fila (sem apagar arquivos)"
+    };
+    int choice = modal("Fila de transferências", std::to_string(g_transferQueue.size()) + " tarefa(s) pendente(s) / limite 20", options);
+    if (choice == 0) enqueueTransfer(false);
+    else if (choice == 1) enqueueTransfer(true);
+    else if (choice == 2) runTransferQueue();
+    else if (choice == 3) {
+        if (g_transferQueue.empty()) { message("Fila vazia", "Nenhuma tarefa pendente."); return; }
+        std::vector<std::string> labels;
+        for (const auto& job : g_transferQueue)
+            labels.push_back(std::string(job.move ? "Mover: " : "Copiar: ") + std::to_string(job.entries.size()) + " item(ns) -> " + job.destination);
+        modal("Tarefas pendentes", "A fila é temporária e não persiste após fechar o aplicativo.", labels);
+    } else if (choice == 4 && !g_transferQueue.empty()) {
+        if (modal("Limpar fila", "Descartar tarefas pendentes? Nenhum arquivo será apagado.", {"Cancelar", "Limpar fila"}) == 1) {
+            g_transferQueue.clear();
+            message("Fila limpa", "Todas as tarefas pendentes foram descartadas.");
+        }
+    }
+}
+
+static void wifiMenu() {
+    if (!wifi::running()) {
+        if (modal("Wi-Fi local", "Compartilhar arquivos da pasta sdmc:/switch/SwitchFileManager/WiFi pelo navegador do celular?\nSomente na sua rede local.", {"Cancelar", "Iniciar servidor"}) != 1) return;
+        std::string err;
+        if (!wifi::start(err)) { message("Wi-Fi indisponível", err); return; }
+    }
+    std::string url = wifi::url();
+    int choice = modal("Transferência Wi-Fi", "No celular, conectado ao mesmo Wi-Fi, abra:\n" + url + "\n\nCódigo de acesso incluído no endereço.\nArquivos ficam em sdmc:/switch/SwitchFileManager/WiFi", {"Manter ativo", "Parar compartilhamento"});
+    if (choice == 1) wifi::stop();
+}
+
 static void actionsMenu() {
     Pane& p = panes[active];
     std::vector<std::string> o = {
         "Copiar para o outro painel", "Mover para o outro painel", "Renomear",
         "Nova pasta", "Apagar", "Seleção múltipla...",
-        "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta..."};
+        "Fila de transferências...", "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta...", "Transferência Wi-Fi..."};
     int r = modal("Ações", "", o);
     switch (r) {
         case 0: doCopyMove(false); break;
@@ -1767,11 +1892,13 @@ static void actionsMenu() {
         case 3: doMkdir(); break;
         case 4: doDelete(); break;
         case 5: selectionMenu(); break;
-        case 6: sortMenu(); break;
-        case 7: zipMenu(); break;
-        case 8: propsMenu(); break;
-        case 9: favMenu(); break;
-        case 10: cloudMenu(); break;
+        case 6: transferQueueMenu(); break;
+        case 7: sortMenu(); break;
+        case 8: zipMenu(); break;
+        case 9: propsMenu(); break;
+        case 10: favMenu(); break;
+        case 11: cloudMenu(); break;
+        case 12: wifiMenu(); break;
         default: break;
     }
 }
@@ -1897,6 +2024,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    wifi::stop();
     gd::netExit();
     framebufferClose(&g_fb);
     free(canvas);
