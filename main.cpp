@@ -1,4 +1,4 @@
-// Switch File Manager v0.6.0 - interface Commander, dois paineis e operacoes seguras
+// Switch File Manager v0.7.0 - interface Commander, dois paineis e operacoes seguras
 // C++ / libnx (renderização por software, sem bibliotecas externas) + Google Drive
 
 #include <switch.h>
@@ -743,10 +743,11 @@ static void drawProgressOverlay() {
 
 static void tickProgress(bool force = false) {
     u64 now = progressNowMs();
-    if (!force && now - g_lastUI < 80) return;
-    g_lastUI = now;
+    // Capturar B em toda chamada, mesmo quando o desenho da tela é limitado a 80 ms.
     padUpdate(&pad);
     if (padGetButtonsDown(&pad) & HidNpadButton_B) g_cancel = true;
+    if (!force && now - g_lastUI < 80) return;
+    g_lastUI = now;
     pump();
     drawMain();
     drawProgressOverlay();
@@ -794,26 +795,35 @@ static std::string safeName(std::string n) {
 static bool copyFile(const std::string& s, const std::string& d) {
     FILE* in = fopen(s.c_str(), "rb");
     if (!in) { g_err = "Não foi possível abrir: " + baseName(s); return false; }
-    FILE* out = fopen(d.c_str(), "wb");
-    if (!out) { fclose(in); g_err = "Não foi possível criar: " + baseName(d); return false; }
     const size_t BS = 1 << 20;
     char* buf = (char*)malloc(BS);
-    if (!buf) { fclose(in); fclose(out); remove(d.c_str()); g_err = "Memória insuficiente."; return false; }
+    if (!buf) { fclose(in); g_err = "Memória insuficiente."; return false; }
+    // Exclusividade: uma mudança no destino durante a operação não deve sobrescrever dados.
+    if (pathExists(d)) {
+        free(buf); fclose(in); g_err = "Destino já existe: " + baseName(d); return false;
+    }
+    FILE* out = fopen(d.c_str(), "wb");
+    if (!out) { free(buf); fclose(in); g_err = "Não foi possível criar: " + baseName(d); return false; }
     bool ok = true;
     size_t n;
     while ((n = fread(buf, 1, BS, in)) > 0) {
         if (fwrite(buf, 1, n, out) != n) { ok = false; g_err = "Falha ao gravar (cartão cheio?)."; break; }
         g_pDone += n;
         tickProgress();
-        if (g_cancel) { ok = false; break; }
+        if (g_cancel) { ok = false; g_err = "Cópia interrompida pelo usuário."; break; }
     }
+    if (ok && fflush(out) != 0) { ok = false; g_err = "Falha ao descarregar dados no destino."; }
     if (ferror(in)) { ok = false; g_err = "Falha ao ler: " + baseName(s); }
     free(buf);
     if (fclose(in) != 0) { ok = false; g_err = "Falha ao fechar arquivo de origem: " + baseName(s); }
     // fclose pode detectar erro de gravação mesmo quando fwrite não detectou.
     if (fclose(out) != 0) { ok = false; g_err = "Falha ao finalizar gravação: " + baseName(d); }
-    if (!ok) remove(d.c_str());
-    else if (g_pCountFiles) ++g_pFilesDone;
+    if (!ok) {
+        // Se não for possível limpar, avisar: nunca declarar que o destino está íntegro.
+        const std::string cause = g_err;
+        if (remove(d.c_str()) != 0)
+            g_err = cause + " Arquivo parcial permaneceu em: " + d;
+    } else if (g_pCountFiles) ++g_pFilesDone;
     return ok;
 }
 
@@ -1379,7 +1389,8 @@ static void doCopyMove(bool move) {
         if (s.drive) {
             std::string outPath;
             ok = dlTree(e, d.path, outPath, 0);
-            if (!ok && !outPath.empty()) removeTree(outPath);
+            if (!ok && !outPath.empty() && !removeTree(outPath))
+                g_err += " ATENÇÃO: download incompleto pode permanecer em " + outPath;
             if (ok && move && !e.gdoc && !gd::trashItem(e.id)) { ok = false; g_err = gd::lastError(); }
         } else if (d.drive) {
             std::string from = join(s.path, e.name);
@@ -1415,8 +1426,10 @@ static void doCopyMove(bool move) {
                 if (!ok) {
                     // Em caso de falha, manter a origem e tentar limpar a cópia incompleta.
                     std::string cause = g_err;
-                    removeTree(to);
-                    g_err = cause;
+                    if (!removeTree(to))
+                        g_err = cause + " ATENÇÃO: restos da cópia podem permanecer em " + to;
+                    else
+                        g_err = cause;
                 } else if (move) {
                     // Só excluir a origem depois da comparação integral bem-sucedida.
                     ok = removeTree(from);
@@ -1426,7 +1439,10 @@ static void doCopyMove(bool move) {
         if (!ok) fail++;
     }
     reloadBoth();
-    if (g_cancel) message("Cancelado", "A operação foi cancelada.");
+    if (g_cancel) message("Cancelado", wrapText(
+        g_err.find("ATENÇÃO:") != std::string::npos ? g_err :
+        std::string("Operação interrompida. A origem foi preservada quando a cópia não foi concluída. ") +
+        "Confira o destino antes de reutilizar os arquivos.", 52));
     else if (fail > 0) message("Atenção", wrapText(g_err.empty() ? std::string("Alguns itens falharam.") : g_err, 52));
     else if (g_skipped > 0)
         message("Concluído", std::to_string(g_skipped) + " arquivo(s) nativos do Google (Docs/Planilhas)\nforam ignorados: não podem ser baixados.");
