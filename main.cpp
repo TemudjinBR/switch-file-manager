@@ -1,4 +1,4 @@
-// Switch File Manager v0.2.0 - interface Commander, dois paineis e operacoes seguras
+// Switch File Manager v0.3.0 - interface Commander, dois paineis e operacoes seguras
 // C++ / libnx (renderização por software, sem bibliotecas externas) + Google Drive
 
 #include <switch.h>
@@ -1567,11 +1567,36 @@ static void sortMenu() {
     }
 }
 
+// Seleção em lote no painel ativo. Respeita a busca atual e não altera arquivos.
+static void selectionMenu() {
+    Pane& p = panes[active];
+    const std::vector<std::string> opts = {
+        "Marcar todos os itens visíveis",
+        "Marcar somente arquivos",
+        "Marcar somente pastas",
+        "Inverter marcação visível",
+        "Limpar todas as marcações"
+    };
+    int choice = modal("Seleção múltipla",
+        std::to_string(p.marks.size()) + " marcado(s) / " +
+        std::to_string(p.items.size()) + " item(ns) visíveis", opts);
+    if (choice < 0) return;
+    if (choice == 4) { p.marks.clear(); return; }
+    for (const auto& e : p.items) {
+        if (choice == 0 || (choice == 1 && !e.dir) || (choice == 2 && e.dir))
+            p.marks.insert(e.key);
+        else if (choice == 3) {
+            if (p.marks.count(e.key)) p.marks.erase(e.key);
+            else p.marks.insert(e.key);
+        }
+    }
+}
+
 static void actionsMenu() {
     Pane& p = panes[active];
     std::vector<std::string> o = {
         "Copiar para o outro painel", "Mover para o outro painel", "Renomear",
-        "Nova pasta", "Apagar", "Marcar tudo / limpar marcação",
+        "Nova pasta", "Apagar", "Seleção múltipla...",
         "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta..."};
     int r = modal("Ações", "", o);
     switch (r) {
@@ -1580,10 +1605,7 @@ static void actionsMenu() {
         case 2: doRename(); break;
         case 3: doMkdir(); break;
         case 4: doDelete(); break;
-        case 5:
-            if (p.marks.size() == p.items.size()) p.marks.clear();
-            else for (auto& e : p.items) p.marks.insert(e.key);
-            break;
+        case 5: selectionMenu(); break;
         case 6: sortMenu(); break;
         case 7: zipMenu(); break;
         case 8: propsMenu(); break;
