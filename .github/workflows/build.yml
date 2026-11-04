@@ -1,1 +1,33 @@
 
+name: Compilar Switch File Manager
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar NRO
+        run: |
+          export DEVKITPRO=/opt/devkitpro
+          export DEVKITA64=/opt/devkitpro/devkitA64
+          export PATH="$PATH:$DEVKITA64/bin:$DEVKITPRO/tools/bin"
+          make -j2
+          test -s SwitchFileManager.nro
+
+      - name: Disponibilizar NRO de teste
+        uses: actions/upload-artifact@v4
+        with:
+          name: SwitchFileManager-nro-teste
+          path: SwitchFileManager.nro
+          if-no-files-found: error
+          
