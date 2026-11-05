@@ -1,0 +1,97 @@
+name: Publicar versão validada
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag existente vX.Y.Z, revisada e correspondente ao VERSION
+        required: true
+        type: string
+      console_validado:
+        description: Confirmo testes no Switch físico conforme docs/TESTES.md
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publicar-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  criteria:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.criteria.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Conferir critérios de publicação
+        id: criteria
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          CONSOLE_VALIDADO: ${{ inputs.console_validado }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CONSOLE_VALIDADO" = true ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          sha="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
+          git checkout --detach "$sha"
+          [[ "v$(python3 scripts/version.py)" = "$RELEASE_TAG" ]]
+          test -s "release-notes/$RELEASE_TAG.md"
+          # O relatório deve registrar dispositivo, Atmosphère e resultados reais.
+          test -s "docs/validacao-console/$RELEASE_TAG.md"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  validated:
+    needs: criteria
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.criteria.outputs.sha }}
+
+  publish:
+    needs: [criteria, validated]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.criteria.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SwitchFileManager-validado
+          path: dist
+      - name: Recusar sobrescrita de Release existente
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases" > releases.json
+          python3 - <<'PY'
+          import json, os
+          releases = json.load(open('releases.json'))
+          if any(r['tag_name'] == os.environ['RELEASE_TAG'] for r in releases):
+              raise SystemExit('Release existente; não sobrescrever')
+          PY
+          cd dist
+          sha256sum --check SwitchFileManager.nro.sha256
+          sha256sum --check "SwitchFileManager-${RELEASE_TAG}.zip.sha256"
+      - name: Publicar arquivos verificados
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ needs.criteria.outputs.sha }}
+          body_path: release-notes/${{ inputs.tag }}.md
+          files: dist/*
+          overwrite_files: false
+          fail_on_unmatched_files: true
+          generate_release_notes: false

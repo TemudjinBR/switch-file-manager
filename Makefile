@@ -9,9 +9,9 @@ include $(DEVKITPRO)/libnx/switch_rules
 
 TARGET := SwitchFileManager
 BUILD := build
-SOURCES := .
+SOURCES := src/app src/cloud src/network src/archives third_party/miniz
 DATA := data
-INCLUDES := .
+INCLUDES := include third_party/miniz third_party/stb
 
 APP_TITLE := Switch File Manager
 APP_AUTHOR := TemudjinBR
@@ -44,7 +44,7 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
                   -I$(CURDIR)/$(BUILD)/generated
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
-export APP_ICON := $(if $(wildcard $(CURDIR)/icon.jpg),$(CURDIR)/icon.jpg,$(DEVKITPRO)/libnx/default_icon.jpg)
+export APP_ICON := $(if $(wildcard $(CURDIR)/assets/icon.jpg),$(CURDIR)/assets/icon.jpg,$(DEVKITPRO)/libnx/default_icon.jpg)
 export NROFLAGS += --icon=$(APP_ICON) --nacp=$(CURDIR)/$(TARGET).nacp
 
 .PHONY: $(BUILD) clean all
