@@ -30,7 +30,7 @@ jobs:
           path: SwitchFileManager.nro
           if-no-files-found: error
 
-      - name: Preparar publicacao
+      - name: Preparar versao e checksum
         id: version
         shell: bash
         run: |
@@ -40,17 +40,16 @@ jobs:
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
           sha256sum SwitchFileManager.nro > SwitchFileManager.nro.sha256
 
-      - name: Publicar Release se a versao ainda nao existir
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG ja existe; nao substituir artefato publicado."
-            exit 0
-          fi
-          gh release create "$RELEASE_TAG"             SwitchFileManager.nro             SwitchFileManager.nro.sha256             --title "Switch File Manager $RELEASE_TAG"             --notes "Build automatizado a partir do commit $GITHUB_SHA. Versao experimental: valide no console antes de usar com arquivos importantes."             --target "$GITHUB_SHA"
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Switch File Manager ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            SwitchFileManager.nro
+            SwitchFileManager.nro.sha256
+          fail_on_unmatched_files: true
+          overwrite_files: false
+          generate_release_notes: true
           
