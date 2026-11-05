@@ -54,3 +54,11 @@ O Makefile descobre os fontes nas pastas explicitadas em `SOURCES` e recusa nome
 `VERSION` alimenta `APP_VERSION` e `SFM_VERSION`; a alteração também invalida o NACP incremental. `prepare.py` só escreve quando o conteúdo gerado muda. Os scripts em `scripts/legacy` são entradas de compatibilidade que chamam a preparação atual.
 
 `validate_nro.py` verifica segmentos executáveis, ASET, intervalos de assets, ícone JPEG, NACP, título e versão. Isso não executa o binário. `package.py` inclui somente NRO, instruções, manifesto e checksums, com ordem e timestamps ZIP fixos. A repetição com o mesmo NRO produz o mesmo ZIP; não há garantia de NRO idêntico entre toolchains diferentes ou diretórios com debug paths distintos.
+
+## Camada de apresentação e documentação
+
+A Missão 2 preserva todos os módulos C++, headers, versão e imagem incorporada. README/índice/guias descrevem as capacidades efetivas e seus menus, sem gerar uma nova UI do aplicativo.
+
+A validação de documentação usa `scripts/check_docs.py` (biblioteca padrão) para links Markdown/HTML, âncoras e referências a imagens. A renderização visual de revisão usa navegador e CSS de Markdown compatível com GitHub em arquivos temporários do ambiente; não entra no NRO e não depende de serviço pago. As prévias não são capturas do Switch.
+
+O relato de falha física na persistência do token Drive demonstra um limite que o host não reproduziu. A escrita temporária com sincronização e rename descrita acima não comprova sucesso no SD/libnx; consultar [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md).

@@ -55,3 +55,17 @@ Isso sustenta a diferença de propriedade/confiança do checkout como causa do e
 6. Consolidar documentação e workflows, validar NRO/distribuição, repetir build incremental e publicar commits em branch com PR.
 
 Cada resultado efetivamente executado é detalhado no relatório de validação. Itens físicos não foram marcados como aprovados. Nenhuma Release foi publicada nesta missão.
+
+## Complemento da Missão 2 — 05/11/2026
+
+A nova verificação partiu do checkout limpo e do PR #1 aberto na revisão `8be971079763e6c74bb3b6f37f1e25d3b976e35f`. A main continuava em `db81e91ff73852a933f8c93a5d4177c3a98de2f0`; Release pública observada: v0.10.7. Versão de desenvolvimento: 0.10.8 experimental. Foram relidos todos os menus/controles e módulos envolvidos no inventário, antes de atualizar a apresentação.
+
+O ícone oficial foi aberto para inspeção: corresponde à descrição fornecida pelo proprietário e teve seu SHA-256 preservado. O repositório, ZIP legado e anexos disponíveis não continham capturas autênticas do aplicativo. Não foi criada uma galeria fictícia ou nova marca.
+
+Foi recebido na especificação o relato físico de falha do Google Drive no Lite: “Falha ao salvar login no cartão SD.”. O texto de código situa a falha na gravação local do token, mas não identifica qual chamada falhou no hardware. Esse é um novo dado posterior à auditoria anterior; não contradiz os testes de host e não foi tratado como recusa do Google. A correção OAuth fica para tarefa própria.
+
+A raiz e os módulos foram preservados. O relatório anterior foi movido para `docs/historico/VALIDACAO_MISSAO_1.md`, com links relativos ajustados; não foi apagado. Arquivos de `docs/legacy/` foram identificados como históricos, e seis wrappers de `scripts/legacy/` continuam necessários à compatibilidade/testes e foram mantidos.
+
+O conector GitHub disponível expõe leitura de metadados e escrita de arquivos/PRs, mas não edição de descrição/tópicos. A tentativa de acesso à API pela CLI (`gh api repos/TemudjinBR/switch-file-manager`) devolveu `Forbidden`; a política de rede do executor não libera `api.github.com` na lista HTTP. Não se contornou essa restrição, não foram solicitadas credenciais e não se declarou o campo Sobre alterado. Proposta e estado observado ficam em [MISSAO_2.md](MISSAO_2.md).
+
+Os novos testes, build, revisão visual e validação remota são registrados no [relatório atual](RELATORIO_VALIDACAO.md). O escopo desta missão não inclui C++, OAuth, ícone do executável, main, merge ou Release.

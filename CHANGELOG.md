@@ -16,6 +16,15 @@
 - CI para branches e PRs, imagem devkitPro fixada por digest, confiança Git restrita ao workspace e remoção de commits automáticos na `main`.
 - Publicação manual separada, com tag existente, correspondência de versão, notas, relatório no console e nova compilação/testes.
 
+### Apresentação e documentação — Missão 2
+
+- README com a marca oficial intacta, introdução, benefícios e catálogo completo de 12 categorias, sem reduzir o aplicativo a poucas funções.
+- Guias de funcionalidades, controles, armazenamento, FTP e ZIP; índice de documentação e regras para capturas reais.
+- Registro do relato de falha de persistência do login Drive no Switch Lite; causa exata não confirmada e nenhuma correção OAuth nesta missão.
+- Validação adicional de links/âncoras/imagens, inventário de menus e preservação do ícone do NRO.
+- Relatório da Missão 1 preservado em histórico; resultados novos separados por execução.
+- Sem novas funções do aplicativo, sem troca de ícone e sem alteração de versão. Metadados administrativos só são considerados aplicados quando confirmados no GitHub.
+
 Esta versão não foi publicada como Release nesta auditoria e ainda requer validação física.
 
 ## 0.10.7 — Release pública anterior

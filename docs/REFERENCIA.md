@@ -1,10 +1,10 @@
 # Referência do Switch File Manager
 
-Documento de entrada para uma pessoa ou IA continuar o projeto. Leia este arquivo, `ARQUITETURA.md`, `TESTES.md` e `PROBLEMAS_CONHECIDOS.md` antes de editar. A organização segue o propósito da referência do Omni36OS, adaptado ao Switch e à libnx.
+Documento de entrada para uma pessoa ou IA continuar o projeto. O [índice de documentação](README.md) separa guias de uso, inventário e evidências de cada missão. Leia este arquivo, `ARQUITETURA.md`, `TESTES.md` e `PROBLEMAS_CONHECIDOS.md` antes de editar. A organização segue o propósito da referência do Omni36OS, adaptado ao Switch e à libnx.
 
 ## Identidade e invariantes
 
-- Repositório: https://github.com/TemudjinBR/switch-file-manager. Branch de integração: `main`.
+- Repositório: [TemudjinBR/switch-file-manager](https://github.com/TemudjinBR/switch-file-manager). Branch de integração: `main`.
 - Aplicativo C++17 para Nintendo Switch desbloqueado/Atmosphère; Switch Lite é alvo prioritário.
 - Nome do binário: `SwitchFileManager.nro`. Título NACP: `Switch File Manager`.
 - Preservar Commander com dois painéis, FTP, Drive, ZIP, toque e controles físicos.
@@ -75,3 +75,14 @@ O erro histórico acontecia em `git config user.name` após a compilação, ao t
 A auditoria inicial é de 05/11/2026, base `db81e91ff73852a933f8c93a5d4177c3a98de2f0`. As migrações foram incorporadas antes da mudança de pastas. A UI ainda coordena painéis e operações no arquivo principal; a separação de todos os controladores fica para mudanças pequenas futuras. Não apresentar esta etapa como eliminação de todo o acoplamento.
 
 Resultados reproduzíveis: `docs/RELATORIO_VALIDACAO.md`, logs de Actions e artefatos da branch/PR. Testes reais de SSL Google, SD FAT32/exFAT, controles e estabilidade prolongada continuam pendentes no Switch.
+
+## Continuidade após a Missão 2
+
+- Identidade oficial: `assets/icon.jpg`, 256×256, bytes preservados no README e no NRO; regras em [assets/branding](../assets/branding/README.md). Não gerar/substituir a marca.
+- O catálogo da UI e os limites têm evidência em [FUNCIONALIDADES.md](FUNCIONALIDADES.md), com todos os submenus; os guias de controles, armazenamento, FTP e ZIP complementam o Drive.
+- A fila continua local, até 20 tarefas e não persistente. Favoritos/histórico são persistentes; ordenação, filtro, marcações e painéis são estados de sessão.
+- Há relato do proprietário de falha física na v0.10.8 no Switch Lite: **“Falha ao salvar login no cartão SD.”**. A causa exata da persistência não está confirmada; não atribuir a rejeição ao Google nem anunciar OAuth corrigido. A Missão 2 não altera esse fluxo.
+- Não há capturas autênticas disponíveis nesta missão. `docs/screenshots/README.md` orienta sua futura inclusão sem criar links para arquivos inexistentes.
+- Resultados anteriores: [validação da Missão 1](historico/VALIDACAO_MISSAO_1.md). Resultados atuais: [relatório de validação](RELATORIO_VALIDACAO.md). As 37 aprovações antigas não devem ser reutilizadas como teste de uma revisão nova.
+- Descrição/tópicos administrativos: conferir o estado observado e a limitação de acesso em [MISSAO_2.md](MISSAO_2.md). Alterar README não equivale a alterar o campo Sobre.
+- PR #1 permanece o local de trabalho; não fazer merge, force-push, publicação de Release ou modificação direta da main nesta missão.

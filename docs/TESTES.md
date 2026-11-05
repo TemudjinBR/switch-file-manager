@@ -1,5 +1,9 @@
 # Testes e validação
 
+## Separar execuções e relatos
+
+Os resultados da Missão 1 foram preservados em [histórico](historico/VALIDACAO_MISSAO_1.md). A Missão 2 executa novamente a suíte e a compilação; o [relatório atual](RELATORIO_VALIDACAO.md) identifica as evidências da revisão de documentação. O relato do proprietário sobre “Falha ao salvar login no cartão SD.” no Lite é registrado como falha física conhecida, sem supor que a equipe executou ou aprovou a matriz no console.
+
 ## Execução reproduzível
 
 A suíte usa Python 3, GCC/G++ C++17 e bibliotecas padrão. Compila os módulos de produção em executáveis temporários no host e usa sockets de loopback. Não acessa conta Google, rede externa ou SD de usuário.
@@ -79,3 +83,25 @@ Não executar testes destrutivos sobre dados de usuário. Arquivos >4 GiB exigem
 - Recusar Release existente; não sobrescrever artefatos ou tags já distribuídos.
 
 Nesta missão não se criou o relatório físico ficticiamente nem se publicou Release. Os resultados desta execução estão em [RELATORIO_VALIDACAO.md](RELATORIO_VALIDACAO.md).
+
+## Validação da apresentação — Missão 2
+
+```bash
+python3 scripts/check_docs.py
+python3 tests/run.py
+bash scripts/build.sh
+```
+
+O verificador de documentação não depende de pacotes Python externos. Ele examina Markdown e HTML dos documentos ativos, caminhos, âncoras locais e imagens. Os testes adicionais conferem sua reação a links/âncoras quebrados, a preservação do ícone oficial, o uso desse ícone no README e no NRO quando fornecido, a versão e a cobertura dos rótulos dos submenus inventariados.
+
+Links externos importantes são conferidos separadamente por requisição de leitura; uma resposta de GitHub pode exigir autenticação em um artefato de Actions, e isso não equivale a link inexistente. Resultados e limites externos devem ser identificados no relatório da missão.
+
+A revisão visual abre a página renderizada em Chromium nos tamanhos de desktop e smartphone, mede overflow e carregamento do logotipo e inspeciona capturas da documentação. Não usar esses arquivos como imagens do aplicativo. Uma prévia local com CSS compatível não é uma captura da página renderizada pelo servidor do GitHub.
+
+Revisão opcional de estilo Markdown, com versão fixada e configuração do repositório:
+
+```bash
+npm exec --yes --package markdownlint-cli2@0.18.1 -- markdownlint-cli2 README.md CHANGELOG.md 'docs/*.md' 'docs/screenshots/*.md' 'docs/historico/*.md' 'assets/branding/*.md' 'third_party/*.md'
+```
+
+A configuração aceita os elementos HTML do cabeçalho, permite a primeira linha com logotipo antes do H1 e não impõe limite de linha a parágrafos/tabelas longos. Isso não desativa as verificações de links, imagens, âncoras ou hierarquia do restante do Markdown.

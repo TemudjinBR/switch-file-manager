@@ -4,6 +4,30 @@
 
 > **Importante:** nesta versão, cada usuário precisa criar credenciais OAuth próprias no Google Cloud. O recurso ainda é experimental. Não compartilhe credenciais nem códigos de autorização.
 
+## Falha de persistência relatada no Switch Lite
+
+**Problema aberto da v0.10.8:** o proprietário relatou no Nintendo Switch Lite, durante a autenticação, a mensagem **“Falha ao salvar login no cartão SD.”**. Esse relato foi fornecido na especificação da Missão 2; esta execução não repetiu o teste fisicamente e não recebeu os parâmetros completos de firmware/Atmosphère/formato do SD ou um errno do ponto de falha.
+
+No código, `tokenRequest` em [gdrive.cpp](../src/cloud/gdrive.cpp) emite essa mensagem quando falha a gravação local do token de renovação por `writeFile`, após receber e interpretar uma resposta de token. A sequência usa criação de temporário, escrita, flush, fsync, fechamento e rename. **Não foi identificado qual desses passos falha no console.** O texto não comprova rejeição da autorização pelo Google, nem autoriza atribuir a causa a uma chamada específica sem diagnóstico.
+
+Os testes com servidor simulado e filesystem do host não reproduzem automaticamente o comportamento do SD/libnx. Portanto o fluxo permanece **experimental e com falha física conhecida**, mesmo com testes automatizados aprovados. A Missão 2 só documenta esse problema; não altera OAuth, credenciais, tokens ou o C++ para tentar corrigi-lo.
+
+A correção específica deverá instrumentar os pontos de persistência sem registrar valores de token e testar com dados de uma conta de teste no console, preservando os arquivos anteriores. Não apagar o diretório legado ou compartilhar tokens como procedimento de diagnóstico.
+
+## Capacidades implementadas, ainda experimentais
+
+- Configuração individual de credencial e login por formulário local no celular.
+- Renovação de autorização e tentativa de usar login salvo.
+- Navegação de pastas e listagem paginada da API.
+- Download de arquivos e árvores de pastas para SD, com preflight e limite de profundidade no fluxo de download.
+- Upload de arquivos/pastas locais; arquivos usam o mecanismo resumível da API, com limitações de recuperação/offset ainda documentadas.
+- Criação de pastas, renomeação e envio de itens à lixeira.
+- Retorno de um painel ao SD e troca/desconexão da conta mediante confirmação. Retornar ao SD não é desconectar.
+
+A listagem atual obtém id, nome, tipo e tamanho; não obtém data de modificação remota. O diálogo de propriedades não calcula tamanho total de pastas Drive. Favoritos e fila pertencem ao SD, sem integração remota nessa revisão.
+
+## Configuração no fluxo existente
+
 ### 1. Criar credenciais OAuth
 
 1. Acesse [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto.
@@ -38,7 +62,8 @@ A pasta `switch-manager` é o caminho ainda utilizado pelo código, apesar do no
 
 ### 4. Limitações atuais
 
-- A navegação e as transferências entre Drive e SD estão presentes no código, mas a integração ainda precisa de testes adicionais.
+- A falha de persistência relatada acima pode impedir a conclusão do login no Switch Lite; o fluxo não é considerado estável.
+- Navegação e transferências têm testes com API simulada, sem aprovação integral em conta Google/SSL reais.
 - **Mover** entre Drive e SD está bloqueado por segurança: use **Copiar**, confira os arquivos e só depois exclua a origem manualmente.
 - Copiar diretamente de uma pasta do Drive para outra não é suportado.
 - Arquivos nativos Google Docs e Planilhas não são exportados nesta versão.
@@ -47,7 +72,7 @@ A pasta `switch-manager` é o caminho ainda utilizado pelo código, apesar do no
 ### 5. Solução de problemas
 
 - **Página não abre no celular:** confira a mesma rede Wi-Fi, o IP mostrado no Switch e a porta `8080`.
-- **Google recusa o login:** confira a Drive API, o tipo de credencial **Aplicativo para computador**, a tela de consentimento e os usuários de teste.
+- **“Falha ao salvar login no cartão SD.”:** é a falha local aberta descrita acima; a causa exata ainda não está confirmada. Não concluir que foi uma recusa do Google e não apagar configurações como tentativa automática de correção.
+- **Google recusa explicitamente o login:** confira a Drive API, o tipo de credencial **Aplicativo para computador**, a tela de consentimento e os usuários de teste.
 - **Código inválido:** inicie uma nova autorização; códigos não podem ser reutilizados.
 - **Drive não carrega:** confira conexão com a internet, data e hora e mensagens de erro exibidas no Switch.
-
