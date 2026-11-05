@@ -1299,7 +1299,7 @@ static void toggleMark() {
 }
 
 static void logoutAll() {
-    gd::logout();
+    bool saved = gd::logout();
     for (int i = 0; i < 2; i++) {
         if (panes[i].drive) {
             panes[i].drive = false;
@@ -1310,6 +1310,7 @@ static void logoutAll() {
             panes[i].reload();
         }
     }
+    if (!saved) message("Google Drive", "Sessão encerrada, mas a desconexão não foi salva. " + wrapText(gd::lastError(), 48));
 }
 
 static void cloudMenu() {

@@ -1,6 +1,7 @@
 from pathlib import Path
 import contextlib
 import ftplib
+import errno
 import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
@@ -27,8 +28,8 @@ class NetworkTests(unittest.TestCase):
                         *[str(ROOT / p) for p in ('tests/host/ftp.cpp', 'src/network/wifi_transfer.cpp',
                                                   'src/diagnostics/logger.cpp')], '-o', str(cls.ftp_binary)],
                        check=True, capture_output=True)
-        subprocess.run([*common, *[str(ROOT / p) for p in ('tests/host/drive.cpp', 'src/cloud/gdrive.cpp')],
-                        '-o', str(cls.drive_binary)], check=True, capture_output=True)
+        subprocess.run([*common, *[str(ROOT / p) for p in ('tests/host/drive.cpp', 'src/cloud/gdrive.cpp', 'src/cloud/credential_store.cpp', 'src/diagnostics/logger.cpp', 'tests/host/fsdev_rename.cpp')],
+                        '-Wl,--wrap=rename', '-o', str(cls.drive_binary)], check=True, capture_output=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -41,7 +42,7 @@ class NetworkTests(unittest.TestCase):
         (self.root / 'sdmc:').mkdir()
 
     @contextlib.contextmanager
-    def server_process(self, command):
+    def server_process(self, command, expose_process=False):
         p = subprocess.Popen(list(map(str, command)), cwd=self.root, stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
@@ -49,7 +50,7 @@ class NetworkTests(unittest.TestCase):
             self.assertTrue(ready, 'Servidor não anunciou a URL em 10 segundos')
             url = p.stdout.readline().strip()
             self.assertTrue(url, 'Servidor encerrou antes de anunciar URL')
-            yield url
+            yield (url, p) if expose_process else url
         finally:
             try:
                 out, err = p.communicate('stop\n', timeout=10)
@@ -132,6 +133,11 @@ class NetworkTests(unittest.TestCase):
                     state['token_requests'] += 1
                     state['form'] = parse_qs(body.decode())
                     if mode == 'auth-error': self.respond(400, {'error': 'invalid_client'})
+                    elif mode == 'invalid-grant': self.respond(400, {'error': 'invalid_grant'})
+                    elif mode == 'server-error': self.respond(503, {'error': 'server_error', 'error_description': 'private-fixture-value-never-echo'})
+                    elif mode == 'no-refresh': self.respond(200, {'access_token': 'fake-access', 'expires_in': 3600})
+                    elif mode == 'invalid-fields': self.respond(200, {'access_token': 12345, 'refresh_token': 67890})
+                    elif mode == 'rotate': self.respond(200, {'access_token': 'fake-access', 'refresh_token': 'fake-rotated-refresh', 'expires_in': 3600})
                     else: self.respond(200, {'access_token': 'fake-access', 'refresh_token': 'fake-refresh', 'expires_in': 3600})
                 elif self.path.startswith('/upload/'):
                     self.respond(200, {}, {'Location': 'https://www.googleapis.com/session/test'})
@@ -167,8 +173,8 @@ class NetworkTests(unittest.TestCase):
         (config / 'token.txt').write_text('fake-refresh')
         return config
 
-    def drive(self, port, config, action, *args, success=True):
-        result = subprocess.run([str(self.drive_binary), str(port), str(config), action, *map(str, args)],
+    def drive(self, port, config, action, *args, success=True, extra=()):
+        result = subprocess.run([str(self.drive_binary), str(port), str(config), action, *map(str, args), *extra],
                                 cwd=self.root, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode == 0, success, result.stderr)
         return result
@@ -258,3 +264,193 @@ class NetworkTests(unittest.TestCase):
             result = self.drive(port, self.config(), 'list')
         self.assertEqual(state['token_requests'], 2)
         self.assertIn('folder|Pasta|0', result.stdout)
+
+    def login_request(self, url, route='/code'):
+        target = urlparse(url)
+        connection = http.client.HTTPConnection(target.hostname, target.port, timeout=5)
+        connection.request('POST', route, urlencode({'u': 'http://localhost/?code=fake-code-for-test'}),
+                           {'Content-Type': 'application/x-www-form-urlencoded'})
+        response = connection.getresponse()
+        status, body = response.status, response.read().decode()
+        connection.close()
+        return status, body
+
+    def status(self, process):
+        process.stdin.write('status\n'); process.stdin.flush()
+        ready, _, _ = select.select([process.stdout], [], [], 5)
+        self.assertTrue(ready, 'Sem resposta de estado do processo de teste')
+        return process.stdout.readline().strip()
+
+    def login_port(self):
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', 0))
+            return listener.getsockname()[1]
+
+    def test_drive_rotated_refresh_replaces_legacy_under_fsdev_semantics(self):
+        config = self.config()
+        with self.mock_drive('rotate') as (port, state):
+            self.drive(port, config, 'list')
+        self.assertEqual((config / 'token.txt').read_text(), 'fake-rotated-refresh')
+        self.assertEqual((config / 'token.txt.sfm-old-000').read_text(), 'fake-refresh')
+
+    def test_transient_and_invalid_grant_preserve_saved_token_and_credential(self):
+        config = self.config()
+        credential = (config / 'google.json').read_bytes()
+        for mode in ('invalid-grant', 'server-error', 'auth-error'):
+            with self.subTest(mode=mode), self.mock_drive(mode) as (port, state):
+                result = self.drive(port, config, 'list', success=False)
+                self.assertIn('logged=0', result.stdout)
+                self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')
+                self.assertEqual((config / 'google.json').read_bytes(), credential)
+                self.assertNotIn('private-fixture-value-never-echo', result.stderr)
+
+    def test_refresh_can_reuse_saved_token_when_google_omits_new_refresh(self):
+        config = self.config()
+        with self.mock_drive('no-refresh') as (port, state):
+            self.drive(port, config, 'list')
+        self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')
+        self.assertFalse(list(config.glob('token.txt.sfm-*')))
+
+    def test_sd_error_is_not_reported_as_google_refusal_and_can_retry_locally(self):
+        config = self.config()
+        with self.mock_drive('rotate') as (port, state):
+            command = [self.drive_binary, port, config, 'serve', self.login_port(),
+                       f'--fault=sincronizar-temporario:{errno.EIO}']
+            with self.server_process(command, expose_process=True) as (url, process):
+                status, body = self.login_request(url)
+                self.assertEqual(status, 400)
+                self.assertIn('SD:', body)
+                self.assertIn('etapa=sincronizar-temporario', body)
+                self.assertIn('errno=' + str(errno.EIO), body)
+                self.assertNotIn('O Google recusou', body)
+                self.assertIn('Tentar salvar login novamente', body)
+                self.assertEqual(self.status(process), 'logged=0 source=1')
+                self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')
+                status, body = self.login_request(url, '/retry-save')
+                self.assertEqual(status, 200)
+                self.assertIn('gravado e conferido', body)
+                self.assertEqual(self.status(process), 'logged=1 source=0')
+                self.assertEqual(state['token_requests'], 1)
+        self.assertEqual((config / 'token.txt').read_text(), 'fake-rotated-refresh')
+
+    def test_final_read_failure_cannot_confirm_login(self):
+        config = self.config()
+        with self.mock_drive('rotate') as (port, state):
+            command = [self.drive_binary, port, config, 'serve', self.login_port(), f'--fault=ler-final:{errno.EIO}']
+            with self.server_process(command, expose_process=True) as (url, process):
+                status, body = self.login_request(url)
+                self.assertEqual(status, 400)
+                self.assertIn('etapa=ler-final', body)
+                self.assertEqual(self.status(process), 'logged=0 source=1')
+                self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')
+
+    def test_second_read_before_confirming_session_is_required(self):
+        config = self.config()
+        with self.mock_drive('rotate') as (port, state):
+            command = [self.drive_binary, port, config, 'serve', self.login_port(),
+                       f'--fault=abrir-leitura-legado:{errno.EIO}:1']
+            with self.server_process(command, expose_process=True) as (url, process):
+                status, body = self.login_request(url)
+                self.assertEqual(status, 400)
+                self.assertIn('etapa=abrir-leitura-legado', body)
+                self.assertEqual(self.status(process), 'logged=0 source=1')
+                self.assertEqual((config / 'token.txt.sfm-old-000').read_text(), 'fake-refresh')
+                status, body = self.login_request(url, '/retry-save')
+                self.assertEqual(status, 200)
+                self.assertEqual(self.status(process), 'logged=1 source=0')
+                self.assertEqual(state['token_requests'], 1)
+
+    def test_new_authorization_without_refresh_cannot_use_another_saved_account(self):
+        config = self.config()
+        with self.mock_drive('no-refresh') as (port, state):
+            with self.server_process([self.drive_binary, port, config, 'serve', self.login_port()], expose_process=True) as (url, process):
+                status, body = self.login_request(url)
+                self.assertEqual(status, 400)
+                self.assertIn('Google:', body)
+                self.assertEqual(self.status(process), 'logged=0 source=4')
+        self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')
+
+    def test_logout_blocks_automatic_login_without_deleting_saved_files(self):
+        config = self.config()
+        credential = (config / 'google.json').read_bytes()
+        with self.mock_drive() as (port, state):
+            self.drive(port, config, 'logout')
+            self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')
+            self.assertEqual((config / 'google.json').read_bytes(), credential)
+            self.assertEqual((config / 'login.disabled').read_text(), '1')
+            self.drive(port, config, 'list', success=False)
+            self.assertEqual(state['token_requests'], 0)
+            with self.server_process([self.drive_binary, port, config, 'serve', self.login_port()], expose_process=True) as (url, process):
+                status, body = self.login_request(url)
+                self.assertEqual(status, 200)
+                self.assertEqual(self.status(process), 'logged=1 source=0')
+            self.assertEqual((config / 'login.disabled').read_text(), '0')
+
+    def test_token_storage_diagnostics_never_contain_oauth_values(self):
+        config = self.config()
+        with self.mock_drive('rotate') as (port, state):
+            with self.server_process([self.drive_binary, port, config, 'serve', self.login_port(),
+                                      f'--fault=instalar-novo:{errno.EIO}']) as url:
+                status, body = self.login_request(url)
+                self.assertEqual(status, 400)
+        logs = (self.root / 'sdmc:/switch/Switch File Manager/logs/sfm.log').read_text()
+        self.assertIn('etapa=instalar-novo', logs)
+        self.assertIn('errno=' + str(errno.EIO), logs)
+        for secret in ('fake-secret', 'fake-refresh', 'fake-rotated-refresh', 'fake-access', 'fake-code-for-test'):
+            self.assertNotIn(secret, logs)
+            self.assertNotIn(secret, body)
+
+    def test_first_login_storage_failure_can_retry_without_new_authorization(self):
+        config = self.config()
+        (config / 'token.txt').unlink()  # somente fixture, nunca SD do proprietário
+        with self.mock_drive() as (port, state):
+            command = [self.drive_binary, port, config, 'serve', self.login_port(),
+                       f'--fault=sincronizar-temporario:{errno.ENOSPC}']
+            with self.server_process(command, expose_process=True) as (url, process):
+                status, body = self.login_request(url)
+                self.assertEqual(status, 400)
+                self.assertIn('SD:', body)
+                self.assertEqual(self.status(process), 'logged=0 source=1')
+                self.assertFalse((config / 'token.txt').exists())
+                status, body = self.login_request(url, '/retry-save')
+                self.assertEqual(status, 200)
+                self.assertEqual(self.status(process), 'logged=1 source=0')
+                self.assertEqual(state['token_requests'], 1)
+        self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')
+
+    def test_missing_readback_is_still_a_local_storage_error(self):
+        config = self.config()
+        with self.mock_drive('rotate') as (port, state):
+            command = [self.drive_binary, port, config, 'serve', self.login_port(),
+                       f'--fault=abrir-leitura-legado:{errno.ENOENT}:1']
+            with self.server_process(command, expose_process=True) as (url, process):
+                status, body = self.login_request(url)
+                self.assertEqual(status, 400)
+                self.assertIn('SD:', body)
+                self.assertIn('errno=' + str(errno.ENOENT), body)
+                self.assertEqual(self.status(process), 'logged=0 source=1')
+
+    def test_invalid_oauth_field_types_cannot_confirm_login(self):
+        config = self.config()
+        with self.mock_drive('invalid-fields') as (port, state):
+            with self.server_process([self.drive_binary, port, config, 'serve', self.login_port()], expose_process=True) as (url, process):
+                status, body = self.login_request(url)
+                self.assertEqual(status, 400)
+                self.assertIn('campos inválidos', body)
+                self.assertEqual(self.status(process), 'logged=0 source=4')
+        self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')
+
+    def test_corrupted_local_files_are_preserved_and_diagnosed(self):
+        config = self.config()
+        (config / 'token.txt').write_bytes(b'  \n')
+        with self.mock_drive() as (port, state):
+            result = self.drive(port, config, 'list', success=False)
+            self.assertIn('etapa=validar-token-salvo', result.stderr)
+            self.assertEqual(state['token_requests'], 0)
+        self.assertEqual((config / 'token.txt').read_bytes(), b'  \n')
+        (config / 'google.json').write_text('{json-invalido')
+        with self.mock_drive() as (port, state):
+            result = self.drive(port, config, 'list', success=False)
+            self.assertIn('etapa=validar-credencial', result.stderr)
+            self.assertEqual(state['token_requests'], 0)
+        self.assertEqual((config / 'google.json').read_text(), '{json-invalido')

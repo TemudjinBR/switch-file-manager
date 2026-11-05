@@ -13,3 +13,10 @@ client_secret*.json
 token.txt
 *.sfm-part
 *.sfm-backup
+
+# Cópias de recuperação OAuth também contêm segredos.
+google.json.sfm-*
+token.txt.sfm-*
+login.disabled*
+google.json.tmp.*
+token.txt.tmp.*

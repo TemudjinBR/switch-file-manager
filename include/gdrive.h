@@ -22,12 +22,14 @@ struct Progress {
 bool netInit();
 void netExit();
 std::string lastError();
+enum class ErrorSource { None, Storage, Google, Network, Protocol, Other };
+ErrorSource lastErrorSource();
 
 // ---- login
 bool isLoggedIn();
 bool hasCredentials();
 bool loadSavedLogin();   // tenta usar o login salvo (renova o token)
-void logout();           // apaga o login salvo
+bool logout();           // bloqueia login automático, preservando token/credencial
 
 // Servidor local (porta 8080) onde o usuário cola os dados pelo navegador do celular.
 bool loginServerStart(std::string& urlForUser);
