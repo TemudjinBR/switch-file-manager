@@ -5,6 +5,7 @@
 #include <switch.h>
 #endif
 #include "gdrive.h"
+#include "core/paths.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -82,7 +83,7 @@ static std::string configDir() {
 #ifdef HOST_TEST
     return testDir;
 #else
-    return "sdmc:/switch/switch-manager";
+    return sfm::paths::kLegacyConfigDir;
 #endif
 }
 

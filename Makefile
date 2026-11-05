@@ -9,7 +9,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 
 TARGET := SwitchFileManager
 BUILD := build
-SOURCES := src/app src/cloud src/network src/archives third_party/miniz
+SOURCES := src/app src/core src/ui src/storage src/cloud src/network src/archives src/diagnostics src/security third_party/miniz
 DATA := data
 INCLUDES := include third_party/miniz third_party/stb
 
@@ -31,8 +31,11 @@ export OUTPUT := $(CURDIR)/$(TARGET)
 export TOPDIR := $(CURDIR)
 export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
 export DEPSDIR := $(CURDIR)/$(BUILD)
-CFILES := miniz.c
-CPPFILES := main.cpp gdrive.cpp zipx.cpp wifi_transfer.cpp
+CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
+ifneq ($(words $(CPPFILES) $(CFILES)),$(words $(sort $(CPPFILES) $(CFILES))))
+$(error Nomes de fontes duplicados entre módulos; use nomes únicos.)
+endif
 SFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 ifeq ($(strip $(CPPFILES)),)
 export LD := $(CC)
@@ -61,5 +64,6 @@ DEPENDS := $(OFILES:.o=.d)
 all: $(OUTPUT).nro
 $(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp
 $(OUTPUT).elf: $(OFILES)
+$(OUTPUT).nacp: $(TOPDIR)/VERSION
 -include $(DEPENDS)
 endif
