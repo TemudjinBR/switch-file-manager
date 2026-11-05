@@ -14,7 +14,8 @@ jobs:
     container: devkitpro/devkita64:latest
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          fetch-depth: 0
       - name: Compilar NRO
         run: |
           export DEVKITPRO=/opt/devkitpro
@@ -22,34 +23,41 @@ jobs:
           export PATH="$PATH:$DEVKITA64/bin:$DEVKITPRO/tools/bin"
           make -j2
           test -s SwitchFileManager.nro
-
       - name: Disponibilizar NRO de teste
         uses: actions/upload-artifact@v4
         with:
           name: SwitchFileManager-nro-teste
           path: SwitchFileManager.nro
           if-no-files-found: error
-
-      - name: Preparar versao e checksum
-        id: version
+      - name: Verificar versao e preparar release
+        id: release
         shell: bash
         run: |
           set -euo pipefail
           version="$(sed -nE 's/^[[:space:]]*APP_VERSION[[:space:]]*:=[[:space:]]*([^[:space:]#]+).*/\1/p' Makefile | head -n1)"
           test -n "$version"
+          test -s "release-notes/v${version}.md"
+          git fetch --tags --force
+          if git rev-parse "refs/tags/v${version}" >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Versao v${version} ja publicada; apenas artefato de teste atualizado."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
           sha256sum SwitchFileManager.nro > SwitchFileManager.nro.sha256
-
-      - name: Publicar Release
+      - name: Publicar Release com notas especificas
+        if: steps.release.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: Switch File Manager ${{ steps.version.outputs.tag }}
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: Switch File Manager ${{ steps.release.outputs.tag }}
           target_commitish: ${{ github.sha }}
+          body_path: release-notes/${{ steps.release.outputs.tag }}.md
           files: |
             SwitchFileManager.nro
             SwitchFileManager.nro.sha256
           fail_on_unmatched_files: true
           overwrite_files: false
-          generate_release_notes: true
+          generate_release_notes: false
           
