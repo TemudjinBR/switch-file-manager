@@ -13,46 +13,146 @@ jobs:
     runs-on: ubuntu-latest
     container: devkitpro/devkita64:latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Obter código completo
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Compilar NRO
+          persist-credentials: true
+
+      # Recuperação de um único arquivo: converte 0.10.7 em 0.10.8,
+      # ativa o script de correção já existente e prepara notas da versão.
+      # Após compilação bem-sucedida, essas duas alterações são salvas na main.
+      - name: Preparar versão, correção e notas
+        shell: bash
         run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p = Path('Makefile')
+          txt = p.read_text(encoding='utf-8')
+          if re.search(r'^APP_VERSION[ \t]*:=[ \t]*0\.10\.7[ \t]*$', txt, re.M):
+              txt = re.sub(r'^(APP_VERSION[ \t]*:=[ \t]*)0\.10\.7[ \t]*$', r'\g<1>0.10.8', txt, count=1, flags=re.M)
+              print('Migração controlada: 0.10.7 -> 0.10.8')
+          match = re.search(r'^APP_VERSION\s*:=\s*([^\s#]+)', txt, re.M)
+          if not match:
+              raise SystemExit('ERRO: APP_VERSION não está definido no Makefile')
+          version = match.group(1)
+          if version == '0.10.8':
+              if not Path('apply_log_fix_0108.py').is_file():
+                  raise SystemExit('ERRO: falta apply_log_fix_0108.py na raiz do projeto')
+              hook = '\t@python3 $(CURDIR)/apply_log_fix_0108.py\n'
+              anchor = '\t@python3 $(CURDIR)/apply_diagnostics.py\n'
+              if hook not in txt:
+                  if txt.count(anchor) != 1:
+                      raise SystemExit('ERRO: não foi encontrada a posição do script de diagnóstico')
+                  txt = txt.replace(anchor, anchor + hook, 1)
+          if txt != p.read_text(encoding='utf-8'):
+              p.write_text(txt, encoding='utf-8')
+          print('Versão para compilar:', version)
+          PY
+
+          version="$(sed -nE 's/^[[:space:]]*APP_VERSION[[:space:]]*:=[[:space:]]*([^[:space:]#]+).*/\1/p' Makefile | head -n1)"
+          test -n "$version" || { echo 'ERRO: versão vazia'; exit 1; }
+          echo "APP_BUILD_VERSION=$version" >> "$GITHUB_ENV"
+          mkdir -p release-notes
+          if [ "$version" = "0.10.8" ] && [ ! -s release-notes/v0.10.8.md ]; then
+            cat > release-notes/v0.10.8.md <<'NOTES'
+          # Switch File Manager v0.10.8
+
+          ## Correções e melhorias
+
+          - A compilação passa a executar o script `apply_log_fix_0108.py` depois dos diagnósticos FTP.
+          - O caminho de saída esperado para os registros é `sdmc:/switch/Switch File Manager/logs/sfm.log`.
+          - O pipeline valida se o arquivo `.nro` foi criado e contém a assinatura NRO0.
+          - As Releases incluem notas específicas, `.nro` e arquivo SHA-256.
+          - A publicação impede sobrescrever acidentalmente uma versão já marcada.
+
+          ## Verificações e limitações
+
+          - A compilação automatizada não substitui testes no Nintendo Switch Lite real.
+          - É necessário verificar no console a criação do log e a estabilidade de transferências FTP grandes.
+          - Google Drive ainda requer configuração OAuth individual; integração experimental.
+          - USB OTG e atualização automática no console continuam planejados.
+          NOTES
+          fi
+          if [ ! -s "release-notes/v${version}.md" ]; then
+            {
+              printf '# Switch File Manager v%s\n\n' "$version"
+              printf '## Alterações registradas nos commits\n\n'
+              git log -n 15 --format='- %s' | head -n 15
+              printf '\n## Observação\n\nEsta descrição automática reflete títulos dos commits; detalhes técnicos devem ser conferidos antes da distribuição.\n'
+            } > "release-notes/v${version}.md"
+          fi
+          test -s "release-notes/v${version}.md" || { echo "ERRO: faltam notas v${version}"; exit 1; }
+
+      - name: Compilar e verificar o NRO
+        shell: bash
+        run: |
+          set -euo pipefail
           export DEVKITPRO=/opt/devkitpro
           export DEVKITA64=/opt/devkitpro/devkitA64
           export PATH="$PATH:$DEVKITA64/bin:$DEVKITPRO/tools/bin"
+          make clean
           make -j2
-          test -s SwitchFileManager.nro
+          test -s SwitchFileManager.nro || { echo 'ERRO: o NRO não foi gerado'; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('SwitchFileManager.nro')
+          with path.open('rb') as f:
+              header = f.read(20)
+          if len(header) < 20 or header[16:20] != b'NRO0':
+              raise SystemExit('ERRO: SwitchFileManager.nro sem assinatura NRO0 no offset 0x10')
+          print('OK: NRO compilado e assinatura identificada. Tamanho:', path.stat().st_size)
+          PY
+          sha256sum SwitchFileManager.nro > SwitchFileManager.nro.sha256
+
       - name: Disponibilizar NRO de teste
         uses: actions/upload-artifact@v4
         with:
           name: SwitchFileManager-nro-teste
-          path: SwitchFileManager.nro
+          path: |
+            SwitchFileManager.nro
+            SwitchFileManager.nro.sha256
           if-no-files-found: error
-      - name: Verificar versao e preparar release
+
+      - name: Persistir versão e notas no repositório
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Makefile "release-notes/v${APP_BUILD_VERSION}.md"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: preparar v${APP_BUILD_VERSION} com notas e logs [skip ci]"
+            git push origin HEAD:main
+          else
+            echo 'Makefile e notas já estão persistidos na branch.'
+          fi
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verificar se a Release já existe
         id: release
         shell: bash
         run: |
           set -euo pipefail
-          version="$(sed -nE 's/^[[:space:]]*APP_VERSION[[:space:]]*:=[[:space:]]*([^[:space:]#]+).*/\1/p' Makefile | head -n1)"
-          test -n "$version"
-          test -s "release-notes/v${version}.md"
           git fetch --tags --force
-          if git rev-parse "refs/tags/v${version}" >/dev/null 2>&1; then
+          if git show-ref --tags --verify --quiet "refs/tags/v${APP_BUILD_VERSION}"; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "Versao v${version} ja publicada; apenas artefato de teste atualizado."
+            echo "Release v${APP_BUILD_VERSION} já possui tag; não sobrescrever arquivos."
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
-          sha256sum SwitchFileManager.nro > SwitchFileManager.nro.sha256
-      - name: Publicar Release com notas especificas
+          echo "tag=v${APP_BUILD_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar Release com notas específicas
         if: steps.release.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.tag }}
           name: Switch File Manager ${{ steps.release.outputs.tag }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ steps.source.outputs.commit_sha }}
           body_path: release-notes/${{ steps.release.outputs.tag }}.md
           files: |
             SwitchFileManager.nro
