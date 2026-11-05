@@ -1,0 +1,15 @@
+/build/
+/dist/
+/work/
+*.elf
+*.nacp
+*.nro
+*.nro.sha256
+__pycache__/
+*.pyc
+# Dados de usuário nunca pertencem ao repositório.
+google.json
+client_secret*.json
+token.txt
+*.sfm-part
+*.sfm-backup

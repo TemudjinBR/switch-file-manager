@@ -1,4 +1,4 @@
-# Switch File Manager v0.10.4
+# Switch File Manager — build sem alterações nos fontes
 .SUFFIXES:
 ifeq ($(strip $(DEVKITPRO)),)
 $(error "Defina DEVKITPRO no ambiente.")
@@ -15,7 +15,7 @@ INCLUDES := .
 
 APP_TITLE := Switch File Manager
 APP_AUTHOR := TemudjinBR
-APP_VERSION := 0.10.7
+APP_VERSION := $(shell python3 $(TOPDIR)/scripts/version.py)
 
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES)
@@ -42,7 +42,7 @@ endif
 export OFILES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-                  -I$(CURDIR)/$(BUILD)
+                  -I$(CURDIR)/$(BUILD)/generated
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export APP_ICON := $(if $(wildcard $(CURDIR)/icon.jpg),$(CURDIR)/icon.jpg,$(DEVKITPRO)/libnx/default_icon.jpg)
 export NROFLAGS += --icon=$(APP_ICON) --nacp=$(CURDIR)/$(TARGET).nacp
@@ -50,11 +50,7 @@ export NROFLAGS += --icon=$(APP_ICON) --nacp=$(CURDIR)/$(TARGET).nacp
 .PHONY: $(BUILD) clean all
 all: $(BUILD)
 $(BUILD):
-	@python3 $(CURDIR)/apply_ftp_update.py
-	@python3 $(CURDIR)/apply_live_refresh.py
-	@python3 $(CURDIR)/apply_ftp_status.py
-	@python3 $(CURDIR)/apply_ftp_performance.py
-	@python3 $(CURDIR)/apply_diagnostics.py
+	@python3 $(CURDIR)/scripts/prepare.py
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 clean:

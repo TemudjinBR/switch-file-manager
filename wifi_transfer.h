@@ -11,5 +11,6 @@ unsigned filesCompleted();
 uint64_t currentBytes();
 unsigned activeClients();
 unsigned directoryListings();
+unsigned fileChanges();
 std::string lastActivity();
 }

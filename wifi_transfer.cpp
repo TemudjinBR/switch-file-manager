@@ -1,4 +1,5 @@
 #include "wifi_transfer.h"
+#include "sfm_diag.h" // SFM_DIAG_0107
 #include <switch.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -39,9 +40,18 @@ struct ClientSlot {
 };
 std::array<ClientSlot, MAX_CLIENTS> clients;
 std::atomic<unsigned> listingsDone{0}, connectedClients{0};
+std::atomic<unsigned> changesDone{0};
 std::mutex eventLock;
 std::string lastEvent="Aguardando conexao";
-void event(const std::string& msg){std::lock_guard<std::mutex> guard(eventLock);lastEvent=msg;}
+void event(const std::string& msg){
+    time_t now=time(nullptr);
+    struct tm local{};
+    localtime_r(&now,&local);
+    char stamp[12]; strftime(stamp,sizeof(stamp),"%H:%M:%S",&local);
+    std::lock_guard<std::mutex> guard(eventLock);
+    lastEvent=std::string(stamp)+" - "+msg;
+    sfm_diag::write("FTP", msg);
+}
 int listener = -1;
 std::thread worker;
 bool netReady = false;
@@ -190,27 +200,29 @@ bool readLine(int fd, std::string& result) {
     return false;
 }
 bool writeFile(int fd, FILE* file) {
-    char buf[32768];
+    sfm_diag::write("FTP", "Inicio download");
+    std::vector<char> buf(131072);
     size_t size;
-    while (active && (size = fread(buf, 1, sizeof(buf), file)) != 0) {
-        if (!writeAll(fd, buf, size)) return false;
+    while (active && (size = fread(buf.data(), 1, buf.size(), file)) != 0) {
+        if (!writeAll(fd, buf.data(), size)) return false;
         totalBytes += size;
         transferBytes += size;
     }
     return active && !ferror(file);
 }
 bool receiveFile(int fd, FILE* file) {
-    char buf[32768];
+    sfm_diag::write("FTP", "Inicio upload");
+    std::vector<char> buf(131072);
     for (;;) {
         if (!active) return false;
-        ssize_t count = recv(fd, buf, sizeof(buf), 0);
+        ssize_t count = recv(fd, buf.data(), buf.size(), 0);
         if (count == 0) return true;
         if (count < 0 && errno == EINTR) continue;
-        if (count < 0) return false;
+        if (count < 0) { sfm_diag::write("ERRO", "recv errno=" + std::to_string(errno)); return false; }
         size_t remaining = (size_t)count, index = 0;
         while (remaining) {
-            size_t n = fwrite(buf + index, 1, remaining, file);
-            if (!n) return false;
+            size_t n = fwrite(buf.data() + index, 1, remaining, file);
+            if (!n) { sfm_diag::write("ERRO", "fwrite errno=" + std::to_string(errno)); return false; }
             remaining -= n; index += n;
         }
         totalBytes += (unsigned long long)count;
@@ -232,7 +244,13 @@ bool finalizeUpload(const std::string& dest, const std::string& part) {
 void session(int fd, int slotIndex) {
     ClientSlot& slot = clients[slotIndex];
     connectedClients++;
-    event("Celular conectado");
+    sockaddr_in peer{}; socklen_t peerLen=sizeof(peer);
+    std::string device="Cliente FTP";
+    if (getpeername(fd,(sockaddr*)&peer,&peerLen)==0) {
+        char ip[INET_ADDRSTRLEN]={0};
+        if (inet_ntop(AF_INET,&peer.sin_addr,ip,sizeof(ip))) device=ip;
+    }
+    event("Conectado: "+device);
     reply(fd, 220, "Switch File Manager FTP ready");
     std::string cwd = ROOT, pendingRename, cmd;
     int passive = -1;
@@ -338,19 +356,19 @@ void session(int fd, int slotIndex) {
             if (stat(path.c_str(), &st) == 0) reply(fd, 213, stamp(st.st_mtime));
             else reply(fd, 550, "Not found");
         } else if (op == "MKD" || op == "XMKD") {
-            if (path != ROOT && parentExists(path) && mkdir(path.c_str(), 0777) == 0) reply(fd, 257, "\"" + virtualPath(path) + "\" created");
+            if (path != ROOT && parentExists(path) && mkdir(path.c_str(), 0777) == 0) { changesDone++; reply(fd, 257, "\"" + virtualPath(path) + "\" created"); }
             else reply(fd, 550, "Create failed");
         } else if (op == "RMD" || op == "XRMD") {
-            if (path != ROOT && rmdir(path.c_str()) == 0) reply(fd, 250, "Directory removed");
+            if (path != ROOT && rmdir(path.c_str()) == 0) { changesDone++; reply(fd, 250, "Directory removed"); }
             else reply(fd, 550, "Remove failed");
         } else if (op == "DELE") {
-            if (path != ROOT && isRegular(path) && unlink(path.c_str()) == 0) reply(fd, 250, "File deleted");
+            if (path != ROOT && isRegular(path) && unlink(path.c_str()) == 0) { changesDone++; reply(fd, 250, "File deleted"); }
             else reply(fd, 550, "Delete failed");
         } else if (op == "RNFR") {
             if (path != ROOT && exists(path)) { pendingRename = path; reply(fd, 350, "Ready for RNTO"); }
             else reply(fd, 550, "Not found");
         } else if (op == "RNTO") {
-            if (!pendingRename.empty() && path != ROOT && !exists(path) && parentExists(path) && rename(pendingRename.c_str(), path.c_str()) == 0) reply(fd, 250, "Renamed");
+            if (!pendingRename.empty() && path != ROOT && !exists(path) && parentExists(path) && rename(pendingRename.c_str(), path.c_str()) == 0) { changesDone++; reply(fd, 250, "Renamed"); }
             else reply(fd, 550, "Rename failed");
             pendingRename.clear();
         } else if (op == "LIST" || op == "NLST" || op == "MLSD" || op == "RETR" || op == "STOR") {
@@ -373,8 +391,11 @@ void session(int fd, int slotIndex) {
                 if (out >= 0 && !file) close(out);
             }
             restartAt = 0;
+            if (file) setvbuf(file, nullptr, _IOFBF, 131072);
             if (!isListing && !file) { resetPasv(); reply(fd, 550, "Cannot open file"); continue; }
             transferBytes = 0;
+            if (op == "STOR") event("Upload iniciado por " + device);
+            else if (op == "RETR") event("Download iniciado por " + device);
             reply(fd, 150, "Opening data connection");
             int data=-1;
             if(activeMode) {
@@ -398,6 +419,12 @@ void session(int fd, int slotIndex) {
                 }
             }else data=acceptData(passive, fd);
             resetPasv();activeMode=false;
+            // SFM_FTP_PERF_0106: buffers de dados maiores, sem alterar o protocolo.
+            if (data >= 0) {
+                const int socketBuffer = 262144;
+                setsockopt(data, SOL_SOCKET, SO_RCVBUF, &socketBuffer, sizeof(socketBuffer));
+                setsockopt(data, SOL_SOCKET, SO_SNDBUF, &socketBuffer, sizeof(socketBuffer));
+            }
             slot.data=data;
             bool ok = data >= 0;
             if (ok && isListing) {
@@ -417,13 +444,13 @@ void session(int fd, int slotIndex) {
                 if (fclose(file) != 0) ok = false;
             }
             if (op == "STOR") {
-                if (ok) ok = finalizeUpload(path, temporary);
+                if (ok) { ok = finalizeUpload(path, temporary); if (ok) changesDone++; }
                 if (!ok) unlink(temporary.c_str());
             }
             if (ok) {
-                if (!isListing) { transfersDone++;event("Transferencia concluida"); }
-                reply(fd, 226, "Transfer complete");
-            } else {event("Erro ao listar ou transferir");reply(fd, 426, "Transfer interrupted or failed");}
+                if (!isListing) { transfersDone++;event("Arquivo concluido: " + device); }
+                sfm_diag::write("FTP", "Concluido: " + op + " " + path); reply(fd, 226, "Transfer complete");
+            } else {event("Falha na operacao: " + device);sfm_diag::write("ERRO", "Falha: " + op + " " + path + " errno=" + std::to_string(errno)); reply(fd, 426, "Transfer interrupted or failed");}
             transferBytes = 0;
         } else {
             reply(fd, 502, "Command not supported");
@@ -434,6 +461,7 @@ void session(int fd, int slotIndex) {
     shutdown(fd, SHUT_RDWR);
     close(fd);
     connectedClients--;
+    event("Desconectado: "+device);
 }
 void serve() {
     while (active) {
@@ -465,6 +493,7 @@ unsigned filesCompleted() { return transfersDone.load(); }
 uint64_t currentBytes() { return transferBytes.load(); }
 unsigned activeClients(){return connectedClients.load();}
 unsigned directoryListings(){return listingsDone.load();}
+unsigned fileChanges(){return changesDone.load();}
 std::string lastActivity(){std::lock_guard<std::mutex> guard(eventLock);return lastEvent;}
 bool start(std::string& error) {
     if (active) return true;
@@ -506,7 +535,7 @@ bool start(std::string& error) {
         return false;
     }
     address = "ftp://" + std::string(inet_ntoa(local.sin_addr)) + ":" + std::to_string(PORT);
-    transfersDone = 0; totalBytes = 0; transferBytes = 0;listingsDone=0;connectedClients=0;
+    transfersDone = 0; totalBytes = 0; transferBytes = 0;listingsDone=0;connectedClients=0;changesDone=0;
     event("Aguardando conexao");
     active = true;
     worker = std::thread(serve);

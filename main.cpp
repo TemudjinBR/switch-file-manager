@@ -1,7 +1,9 @@
-// Switch File Manager v0.10.0 - interface Commander, dois paineis e operacoes seguras
+// Switch File Manager v0.10.7 - interface Commander, dois paineis e operacoes seguras
 // C++ / libnx (renderização por software, sem bibliotecas externas) + Google Drive
 
 #include <switch.h>
+#include "version.h"
+#include "sfm_diag.h" // SFM_DIAG_0107
 #include <stdint.h>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -552,6 +554,14 @@ static void drawMain() {
     fillRound(20, 15, 6, 35, 3, C_RED);
     fillRound(29, 15, 6, 35, 3, C_ACC);
     drawText(fL, "Switch File Manager", 47, 14, C_TXT);
+    if (wifi::running()) {
+        std::string ftpStatus = "FTP ATIVO | " +
+            std::to_string(wifi::activeClients()) + " clientes | " +
+            std::to_string(wifi::directoryListings()) + " listagens | " +
+            std::to_string(wifi::filesCompleted()) + " arquivos";
+        drawText(fS, ftpStatus, 405, 45, C_GRN, 585);
+    }
+
     {
         int n = (int)selection(panes[active]).size();
         if (!panes[active].marks.empty())
@@ -653,6 +663,24 @@ static int modal(const std::string& title, const std::string& text, const std::v
             if (!inRect(tp.x, tp.y, bx, by, bw, bh)) return -1;
         }
 
+        // SFM_FTP_STATUS_0105: atualização visual em tempo real.
+        if (title == "Servidor FTP ativo" && wifi::running()) {
+            std::string last = wifi::lastActivity();
+            if (last.size() > 62) last = last.substr(0, 59) + "...";
+            lines = splitLines(
+                "Endereco FTP:\n" + wifi::url() +
+                "\nClientes conectados: " + std::to_string(wifi::activeClients()) +
+                "\nArquivos concluidos: " + std::to_string(wifi::filesCompleted()) +
+                "\nTotal transferido: " + fmtSize(wifi::bytesTransferred()) +
+                "\nUltima atividade:\n" + last);
+        }
+        static unsigned lastModalFtpChanges = 0;
+        unsigned modalFtpChanges = wifi::fileChanges();
+        if (modalFtpChanges != lastModalFtpChanges) {
+            lastModalFtpChanges = modalFtpChanges;
+            for (int pi = 0; pi < 2; ++pi)
+                if (!panes[pi].drive) panes[pi].reload();
+        }
         drawMain();
         fillRect(0, 0, W, H, Col{0, 0, 0, 175});
         fillRound(bx, by, bw, bh, 18, C_PANEL);
@@ -1869,19 +1897,27 @@ static void transferQueueMenu() {
 
 static void wifiMenu() {
     if (!wifi::running()) {
-        if (modal("Wi-Fi local", "Compartilhar arquivos da pasta sdmc:/switch/SwitchFileManager/WiFi pelo navegador do celular?\nSomente na sua rede local.", {"Cancelar", "Iniciar servidor"}) != 1) return;
+        if (modal("Servidor FTP",
+                  "Ativar acesso total ao cartao SD?\n"
+                  "Leitura e gravacao, sem senha.\n"
+                  "Use somente no Wi-Fi confiavel.\n"
+                  "Desligue quando terminar.",
+                  {"Cancelar", "Iniciar FTP"}) != 1) return;
         std::string err;
-        if (!wifi::start(err)) { message("Wi-Fi indisponível", err); return; }
+        if (!wifi::start(err)) { message("FTP indisponivel", err); return; }
     }
-    std::string url = wifi::url();
-    size_t keyPos = url.find("/?key=");
-    std::string shortUrl = keyPos == std::string::npos ? url : url.substr(0, keyPos + 1);
-    std::string accessCode = keyPos == std::string::npos ? "indisponível" : url.substr(keyPos + 6);
-    int choice = modal("Transferência Wi-Fi",
-        "1. No celular, abra:\n" + shortUrl +
-        "\n2. Digite o código na página:\n" + accessCode +
-        "\n\nPasta: /switch/SwitchFileManager/WiFi",
-        {"Manter ativo", "Parar compartilhamento"});
+    std::string last = wifi::lastActivity();
+    if (last.size() > 38) last = last.substr(0, 35) + "...";
+    int choice = modal("Servidor FTP ativo",
+        "Endereco FTP:\n" + wifi::url() +
+        "\nRaiz: / (cartao SD completo)" +
+        "\nAcesso anonimo, sem senha" +
+        "\nClientes conectados: " + std::to_string(wifi::activeClients()) +
+        "\nArquivos concluidos: " + std::to_string(wifi::filesCompleted()) +
+        "\nTotal transferido: " + fmtSize(wifi::bytesTransferred()) +
+        "\nUltima atividade:" +
+        "\n" + last,
+        {"Manter ativo", "Parar servidor FTP"});
     if (choice == 1) wifi::stop();
 }
 
@@ -1892,6 +1928,7 @@ static void actionsMenu() {
         "Nova pasta", "Apagar", "Seleção múltipla...",
         "Fila de transferências...", "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta...", "Transferência Wi-Fi..."};
     int r = modal("Ações", "", o);
+    if (r >= 0 && r < (int)o.size()) sfm_diag::write("ACAO", o[r]);
     switch (r) {
         case 0: doCopyMove(false); break;
         case 1: doCopyMove(true); break;
@@ -1991,6 +2028,7 @@ static void handleInput() {
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
+    sfm_diag::write("APP", "Inicio v" SFM_VERSION);
 
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeDefault(&pad);
@@ -2025,12 +2063,21 @@ int main(int argc, char** argv) {
             updateTouch();
             pump();
             handleInput();
+            static unsigned lastFtpChanges = 0;
+            unsigned ftpChanges = wifi::fileChanges();
+            if (ftpChanges != lastFtpChanges) {
+                lastFtpChanges = ftpChanges;
+                for (int pi = 0; pi < 2; ++pi)
+                    if (!panes[pi].drive) panes[pi].reload();
+                refreshSpace();
+            }
             if (++frame % 300 == 0) refreshSpace();
             drawMain();
             present();
         }
     }
 
+    sfm_diag::write("APP", "Encerramento normal");
     wifi::stop();
     gd::netExit();
     framebufferClose(&g_fb);
