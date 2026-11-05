@@ -75,23 +75,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/releases" > releases.json
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name' > tags.txt
           python3 - <<'PY'
-          import json, os
-          releases = json.load(open('releases.json'))
-          if any(r['tag_name'] == os.environ['RELEASE_TAG'] for r in releases):
+          import os
+          tags = open('tags.txt').read().splitlines()
+          if os.environ['RELEASE_TAG'] in tags:
               raise SystemExit('Release existente; não sobrescrever')
           PY
           cd dist
           sha256sum --check SwitchFileManager.nro.sha256
           sha256sum --check "SwitchFileManager-${RELEASE_TAG}.zip.sha256"
       - name: Publicar arquivos verificados
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag }}
-          target_commitish: ${{ needs.criteria.outputs.sha }}
-          body_path: release-notes/${{ inputs.tag }}.md
-          files: dist/*
-          overwrite_files: false
-          fail_on_unmatched_files: true
-          generate_release_notes: false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_SHA: ${{ needs.criteria.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # gh release create recusa Release existente e --verify-tag impede criar tags.
+          gh release create "$RELEASE_TAG" dist/* --verify-tag \
+            --target "$RELEASE_SHA" --title "Switch File Manager $RELEASE_TAG" \
+            --notes-file "release-notes/$RELEASE_TAG.md"

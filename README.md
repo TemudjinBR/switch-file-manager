@@ -1,74 +1,76 @@
 # Switch File Manager
 
-Gerenciador de arquivos homebrew para Nintendo Switch, com interface de dois painéis.
+Gerenciador de arquivos homebrew em C++17 e libnx para Nintendo Switch, com interface Commander de dois painéis. Destinado a consoles desbloqueados com Atmosphère, incluindo Switch Lite. Ferramentas e serviços usados pelo projeto têm opções gratuitas.
 
-**Versão atual: v0.10.7 — experimental.**
+**Versão em desenvolvimento: 0.10.8, experimental.** A Release pública anterior é a [v0.10.7](https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7). Compilação e testes no host não comprovam funcionamento no console.
 
-## Download e instalação
+## Recursos e estado
 
-1. Abra [Releases](https://github.com/TemudjinBR/switch-file-manager/releases).
-2. Baixe `SwitchFileManager.nro` e coloque-o em uma pasta de `sdmc:/switch/` no cartão microSD.
-3. Inicie o aplicativo pelo Homebrew Menu.
+| Recurso | Situação |
+| --- | --- |
+| Dois painéis, seleção múltipla, ordenação, busca, favoritos e histórico | Implementados; interface e controles dependem de regressão no console |
+| Copiar, mover, renomear, criar e apagar no SD | Implementados; cópia, comparação e remoção têm testes no host |
+| Conferência integral antes de apagar a origem no fallback de mover | Implementada; comparação byte a byte, sem hash criptográfico |
+| Servidor FTP na porta 2121, modos ativo e passivo | Implementado; integração testada com sockets locais, sem validação de desempenho no Switch |
+| Google Drive: login, pastas, download, upload, renomeação e lixeira | Experimental; testes com API simulada, sem autorização Google real nesta auditoria |
+| ZIP: compactar, inspecionar, extrair e cancelar | Implementado; testes reais com miniz no host |
+| Fila de transferências e abertura de outros NROs | Implementadas na aplicação; validação no console pendente |
+| Logs persistentes com rotação e indicação de erro | Implementados; armazenamento e concorrência testados no host |
+| USB OTG, atualização automática e novos provedores | Planejados; não implementados nesta reorganização |
 
-## Como configurar o Google Drive
+Mover entre SD e Drive está bloqueado por segurança. Drive para Drive, exportação de documentos nativos Google e ZIP remoto não são suportados.
 
-> **Importante:** nesta versão, cada usuário precisa criar credenciais OAuth próprias no Google Cloud. O recurso ainda é experimental. Não compartilhe credenciais nem códigos de autorização.
+## Instalação e uso
 
-### 1. Criar credenciais OAuth
+1. Baixe um pacote validado em [Releases](https://github.com/TemudjinBR/switch-file-manager/releases). Artefatos de [Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são versões de teste.
+2. Extraia a pasta `switch` na raiz do microSD, ou coloque `SwitchFileManager.nro` em `sdmc:/switch/Switch File Manager/`.
+3. Inicie pelo Homebrew Menu. Compare o SHA-256 antes de instalar.
 
-1. Acesse [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto.
-2. Habilite a **Google Drive API** em APIs e serviços.
-3. Configure a tela de consentimento OAuth (Google Auth Platform). Caso use o modo de teste, adicione sua conta aos usuários de teste.
-4. Crie um **ID do cliente OAuth** do tipo **Aplicativo para computador**.
-5. Baixe o arquivo `client_secret...json` e guarde-o em segurança no celular ou computador.
+| Controle | Ação |
+| --- | --- |
+| A / B | Abrir / subir pasta |
+| X / Y | Ações / marcar item |
+| L ou R; esquerda ou direita | Alternar painel |
+| ZL / ZR | Subir / descer uma página |
+| Direcional ou analógico esquerdo | Navegar |
+| − / + | Google Drive / sair |
+| Toque | Selecionar, abrir, rolar e usar botões da interface |
 
-Documentação: [OAuth para aplicativos instalados](https://developers.google.com/identity/protocols/oauth2/native-app).
+O FTP permite acesso anônimo de leitura e escrita ao SD inteiro, após confirmação na interface. Use a rede confiável indicada no aplicativo e desligue o servidor ao terminar.
 
-### 2. Conectar o Switch pelo celular
+[Configurar Google Drive](docs/GOOGLE_DRIVE.md). Credenciais, tokens, favoritos e histórico continuam em `sdmc:/switch/switch-manager/`. Essa compatibilidade é somente um caminho de dados; o projeto separado **Switch-Manager** não foi modificado. Logs novos: `sdmc:/switch/Switch File Manager/logs/sfm.log`; logs antigos permanecem onde estavam.
 
-1. Conecte Switch e celular à **mesma rede Wi-Fi**.
-2. No Switch File Manager, escolha o painel e abra a opção **Google Drive**.
-3. O Switch mostrará um endereço local, por exemplo `http://192.168.1.20:8080`. Use o **endereço exato** exibido na tela.
-4. Abra esse endereço no navegador do celular.
-5. Na primeira conexão, selecione o `client_secret...json` e toque em **Salvar credencial**.
-6. Toque em **Entrar com o Google**, escolha sua conta e autorize o acesso solicitado.
-7. A implementação atual pode redirecionar para `http://localhost` e mostrar uma página que não abre. Copie o **endereço completo** da barra do navegador, volte à página local do Switch, cole no campo do Passo 2 e toque em **Enviar para o Switch**.
-8. Aguarde o fechamento automático da tela de login no Switch.
+## Compilação e testes
 
-**Segurança:** o endereço de retorno pode conter um código de autorização. Nunca o compartilhe. A página local usa HTTP; utilize apenas rede Wi-Fi confiável. Não ignore avisos de segurança de um aplicativo desconhecido: confira se o projeto OAuth foi criado por você. O fluxo atual precisa ser revisado e modernizado antes de uma distribuição pública definitiva.
+Requisitos: Python 3, GCC/G++ para testes no host, GNU Make e devkitPro com devkitA64/libnx para produzir o NRO. Não há dependências Python externas para a suíte principal.
 
-### 3. Local dos arquivos de configuração
+```bash
+python3 tests/run.py
+bash scripts/build.sh
+```
 
-O código da v0.10.7 usa:
+O segundo comando usa devkitPro disponível no ambiente ou `/workspace/sfm-environment/build.sh` quando executado no ambiente preparado. Também é possível compilar diretamente:
 
-- `sdmc:/switch/switch-manager/google.json` — credencial OAuth.
-- `sdmc:/switch/switch-manager/token.txt` — token de renovação.
+```bash
+export DEVKITPRO=/opt/devkitpro
+export DEVKITA64="$DEVKITPRO/devkitA64"
+export PATH="$PATH:$DEVKITA64/bin:$DEVKITPRO/tools/bin"
+make clean
+make -j2
+python3 scripts/validate_nro.py SwitchFileManager.nro
+python3 tests/run.py --nro SwitchFileManager.nro
+python3 scripts/package.py
+```
 
-A pasta `switch-manager` é o caminho ainda utilizado pelo código, apesar do nome atual **Switch File Manager**. Não compartilhe esses arquivos nem os envie ao GitHub.
+A distribuição fica em `dist/`. O build gera arquivos de versão em `build/generated/` e não modifica fontes. `VERSION` é a única fonte de versão do Makefile, log inicial, NACP e pacote.
 
-### 4. Limitações atuais
+## Documentação para manutenção
 
-- A navegação e as transferências entre Drive e SD estão presentes no código, mas a integração ainda precisa de testes adicionais.
-- **Mover** entre Drive e SD está bloqueado por segurança: use **Copiar**, confira os arquivos e só depois exclua a origem manualmente.
-- Copiar diretamente de uma pasta do Drive para outra não é suportado.
-- Arquivos nativos Google Docs e Planilhas não são exportados nesta versão.
-- ZIP diretamente no Drive não é suportado.
+- [Referência para retomar o trabalho](docs/REFERENCIA.md)
+- [Arquitetura e dependências](docs/ARQUITETURA.md)
+- [Testes e critérios de publicação](docs/TESTES.md)
+- [Auditoria inicial e correções](docs/AUDITORIA.md)
+- [Problemas conhecidos](docs/PROBLEMAS_CONHECIDOS.md)
+- [Roadmap](docs/ROADMAP.md) e [histórico](CHANGELOG.md)
 
-### 5. Solução de problemas
-
-- **Página não abre no celular:** confira a mesma rede Wi-Fi, o IP mostrado no Switch e a porta `8080`.
-- **Google recusa o login:** confira a Drive API, o tipo de credencial **Aplicativo para computador**, a tela de consentimento e os usuários de teste.
-- **Código inválido:** inicie uma nova autorização; códigos não podem ser reutilizados.
-- **Drive não carrega:** confira conexão com a internet, data e hora e mensagens de erro exibidas no Switch.
-
-## FTP e logs
-
-O FTP existe, mas a estabilidade de transferências grandes ainda está sendo validada. O código da v0.10.7 prevê logs em `sdmc:/switch/SwitchFileManager/logs/sfm.log`, porém a criação desse arquivo no console ainda não foi confirmada. Revise os logs antes de compartilhá-los.
-
-## Estado do desenvolvimento
-
-- GitHub Releases: publicação configurada.
-- Google Drive: integração experimental, exige OAuth individual.
-- FTP e logs: testes de estabilidade pendentes.
-- Auto-update, USB OTG e demais funções planejadas: pendentes.
-  
+Organização inspirada na [referência do Omni36OS](https://github.com/mpjsilva/omni36os/blob/main/docs/REFERENCIA.md): documentação para continuidade, módulos com responsabilidade real e verificações reproduzíveis. O código e o sistema operacional do Omni36OS não foram incorporados.
