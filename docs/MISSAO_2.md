@@ -46,7 +46,7 @@ Não foram solicitados tokens, alteradas credenciais ou usados caminhos alternat
 
 ## Testes e validação
 
-Os resultados novos de verificador, suíte, build, NRO, renderização e CI ficam em [RELATORIO_VALIDACAO.md](RELATORIO_VALIDACAO.md). A validação anterior é histórica e não substitui a execução atual. A versão permanece 0.10.8 experimental.
+Os resultados novos de verificador, suíte, build, NRO, renderização e CI ficam em [RELATORIO_VALIDACAO.md](historico/VALIDACAO_MISSAO_2.md). A validação anterior é histórica e não substitui a execução atual. A versão permanece 0.10.8 experimental.
 
 ## Pendências técnicas preservadas
 

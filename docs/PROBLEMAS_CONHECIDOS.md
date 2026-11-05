@@ -2,12 +2,12 @@
 
 ## Falha relatada no Nintendo Switch Lite — Google Drive
 
-Na v0.10.8, o proprietário relatou **“Falha ao salvar login no cartão SD.”** durante a autenticação. O ponto de código corresponde à persistência local do token. A causa exata e a chamada que falha no console não foram confirmadas; não atribuir a rejeição ao Google. Os testes de host aprovados não anulam esse relato. A Missão 2 documenta, sem modificar o fluxo OAuth; ver [Google Drive](GOOGLE_DRIVE.md#falha-de-persistência-relatada-no-switch-lite).
+Na v0.10.8, o proprietário relatou **“Falha ao salvar login no cartão SD.”** durante a autenticação. O ponto de código corresponde à persistência local do token. A causa exata e a chamada que falha no console não foram confirmadas; não atribuir a rejeição ao Google. Os testes de host aprovados não anulam esse relato. A v0.10.9 implementa uma correção experimental com diagnóstico por etapa/errno e recuperação. Foi reproduzida a falha ao substituir destino existente com a semântica de rename do libnx, mas ainda não foi comprovada a chamada exata que falhou naquele console; ver [Google Drive](GOOGLE_DRIVE.md#falha-de-persistência-relatada-no-switch-lite).
 
 ## Dependem do Switch físico
 
 - A execução de desenvolvimento não teve acesso a Nintendo Switch físico. Há o relato de falha de login acima, recebido do proprietário; ele não constitui aprovação de interface, controles, toque, fonte do sistema, abertura de outros NROs ou modo applet.
-- Logs e gravação atômica precisam de confirmação no SD com caminhos contendo espaços, FAT32 e exFAT, cartão cheio e retomada após falhas. Testes POSIX no host não reproduzem drivers do console.
+- Logs, sincronização e recuperação de gravação precisam de confirmação no SD com caminhos contendo espaços, FAT32 e exFAT, cartão cheio e retomada após falhas. Testes POSIX no host não reproduzem drivers do console.
 - FTP exige validação de desempenho, memória, clientes simultâneos, rede móvel instável e parada durante transferências grandes. Os buffers de 128 KiB e sockets de 256 KiB não comprovam ganho no hardware.
 - Google Drive usa SSL nativo não exercitado no host. Data/hora, certificados, permissões Google e limites reais da API precisam de teste.
 - ZIP64 e arquivos maiores que 4 GiB não foram validados. FAT32 limita cada arquivo a menos de 4 GiB; o aviso de grandes arquivos emitido por miniz permanece registrado.
@@ -38,3 +38,13 @@ Na v0.10.8, o proprietário relatou **“Falha ao salvar login no cartão SD.”
 - Exclusão recursiva consulta o progresso para desenhar/ler B, mas não oferece parada imediata garantida em toda a travessia; não anunciar cancelamento universal de exclusão.
 - O analisador exibe nove maiores itens imediatos. O cálculo de propriedades limita aprofundamento e pode omitir itens inacessíveis; datas remotas não são buscadas.
 - Não há tela Sobre, versão no cabeçalho da UI, bateria/relógio, visualizador universal ou instalador de NSP/XCI/NSZ implementados.
+
+## Limites da persistência OAuth na v0.10.9
+
+- Renomeações são feitas apenas para nomes livres; backup e candidato permanecem no SD. A sequência não é atomicidade contra perda elétrica. Uma interrupção pode exigir recuperar o anterior no próximo carregamento.
+- Cada arquivo tem até 128 slots de transação e 64 KiB de conteúdo. O limite é diagnosticado como `reservar-transacao`/ENOSPC, mesmo havendo espaço físico. Não há expurgo automático de credenciais antigas.
+- Backups e temporários contêm segredos em texto como os arquivos legados. Não compartilhar, versionar ou incluir em artefatos. O acesso simultâneo do FTP a esses arquivos não é bloqueado pela transação.
+- Um candidato ainda não salvo permanece só na memória; fechar o aplicativo nessa condição perde a autorização recebida. O botão de nova tentativa evita repetir OAuth enquanto a sessão continua aberta.
+- Erro ao persistir a desconexão é informado; o token permanece no SD e poderá ser reutilizado na próxima execução se o marcador não foi salvo.
+
+Ver [contrato e evidências](GOOGLE_DRIVE_PERSISTENCIA.md).

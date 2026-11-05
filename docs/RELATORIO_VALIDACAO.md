@@ -1,75 +1,59 @@
-# Validação da revisão — Missão 2 (05/11/2026)
+# Validação — Missão 3 (05/11/2026)
 
-## Resultado desta execução
+## Escopo e estado inicial
 
-**45 testes passaram com o NRO da nova compilação, sem testes ignorados nessa execução.** A versão permanece **0.10.8 experimental**, com `SwitchFileManager.nro` de **779.992 bytes**. O ícone incorporado foi comparado byte a byte com a marca oficial e permaneceu intacto.
+Revisão experimental **0.10.9** na branch `codex/reorganizacao-estabilizacao`, PR #1 preservado. Base limpa inicial: `97382fc9d2cbee8f9dddabafccf3933da52a486a`; CI anterior 42113511214 aprovado. Main permanece em `db81e91ff73852a933f8c93a5d4177c3a98de2f0`. Relatórios das [Missões 1](historico/VALIDACAO_MISSAO_1.md) e [2](historico/VALIDACAO_MISSAO_2.md) preservados.
 
-Esta é uma execução nova, feita sobre a apresentação reformulada. Os resultados da Missão 1 foram preservados em [histórico](historico/VALIDACAO_MISSAO_1.md). O C++, headers, Makefile, versão, ícone original, bibliotecas incorporadas e workflows não foram alterados pela Missão 2. Os fontes do aplicativo continuam os da base `8be971079763e6c74bb3b6f37f1e25d3b976e35f` do PR #1.
+O escopo é persistência/autenticação Drive e seus testes/documentos. Não foram alterados logotipo, organização estabilizada, operações pessoais, FTP ou ZIP. Sem merge e sem Release.
 
-| Verificação nova | Resultado observado |
+## Causa comprovada e hipótese física
+
+Um executável da base anterior com rename recusando destino existente reproduziu “Falha ao salvar login no cartão SD.” ao receber HTTP 200 e substituir token fictício existente. O arquivo anterior permaneceu intacto. A leitura da fonte oficial do libnx 4.12.0 confirmou a diferença de rename, fsync via fsFileFlush e lstat via stat. SDK efetivo: libnx 4.12.0-1, devkitA64 r29.2-1.
+
+Isso comprova uma incompatibilidade condicional. Não havia errno do relato do Lite, portanto não prova qual operação falhou no cartão daquele console. Diretórios, espaço, permissões, escrita, flush, fechamento e releitura continuam hipóteses físicas. Detalhes: [contrato de persistência](GOOGLE_DRIVE_PERSISTENCIA.md).
+
+## Resultados desta revisão
+
+**72/72 testes passaram com o NRO novo, sem casos ignorados**. A suíte anterior à compilação reconheceu 72 casos: 70 passaram e dois dependentes de binário foram explicitamente ignorados. A revisão documental encontrou inicialmente uma frase histórica removida do roadmap; ela foi restaurada e a execução completa foi repetida com sucesso.
+
+| Verificação | Resultado desta execução |
 | --- | --- |
-| `python3 scripts/check_docs.py` | 22 documentos: links locais Markdown/HTML, âncoras e referências a imagens válidos. |
-| `python3 tests/run.py` | 45 casos reconhecidos; 43 aprovados e dois testes de NRO ignorados explicitamente por não receber binário nessa etapa. |
-| `bash scripts/build.sh` | Testes no host, compilação devkitPro pelo ambiente preparado, validação NRO, testes com binário e pacote concluídos. |
-| `python3 tests/run.py --nro SwitchFileManager.nro` durante o build | 45/45 aprovados, sem ignorados; 18,016 s nessa execução. |
-| NRO | NRO0, segmentos, ASET, limites de assets, JPEG, NACP, título e versão 0.10.8 aprovados. |
-| Ícone oficial | Hash do JPEG original preservado; teste conferiu os mesmos bytes dentro do NRO. |
-| Markdownlint | CLI 0.18.1 / engine 0.38.0: 21 arquivos, zero erros, com configuração explícita do repositório. |
-| Workflows | `actionlint` 1.7.7 passou; os arquivos de workflow desta missão permanecem inalterados. |
-| Prévia renderizada | Chromium com MarkdownIt/tabelas e github-markdown-css 5.8.1; quatro tamanhos, sem overflow da página e sem falha de carregamento do logotipo. |
-| Links externos principais | Sete URLs GitHub do README/guias retornaram HTTP 200: perfil do autor, Actions, Issues, PR #1, Releases, v0.10.7 e Omni36OS. |
-| Links Google externos | Console Cloud e documentação OAuth não verificados diretamente: domínios fora da política HTTP do executor. Não foram declarados aprovados por inferência. |
-| `git diff --check` | Aprovado. |
-| Segurança documental | Sem valores reais de tokens, client secrets, códigos OAuth ou dados pessoais adicionados; exemplos/testes usam dados fictícios. |
+| `bash scripts/build.sh` | Suíte no host, build real, validação NRO, suíte com NRO e pacote concluídos |
+| Suíte anterior ao build | 72 casos, 70 aprovados/2 ignorados; 27,888 s |
+| Suíte com NRO | 72 aprovados, zero ignorados; 28,875 s |
+| Armazenamento | 14 métodos com subcasos de falha; rename sem sobrescrita, rollback/recuperação |
+| Rede/Drive/FTP | 25 testes; primeiro login/renovação, retry, erro SD após HTTP 200 e preservação de dados fictícios |
+| NRO | 800.472 bytes; NRO0, segmentos/ASET, JPEG/NACP, título e versão 0.10.9 aprovados |
+| Distribuição | ZIP/lista fechada, checksums e repetição determinística do pacote aprovados pela suíte e conferência dos sidecars |
+| Documentação | 24 arquivos ativos, links locais/âncoras/imagens válidos; Markdownlint em 23 arquivos, zero erros |
+| Workflows | actionlint 1.7.7 aprovado; CI existente mantido, inclui novos testes automaticamente e publica `dist/*` |
+| `git diff --check` | Aprovado |
+| Ícone | Original preservado e comparado byte a byte no NRO |
 
-## Compilação e artefatos
-
-Imagem do ambiente:
+Compilação pelo `/workspace/sfm-environment/build.sh` em cópia descartável, com imagem:
 
 ```text
 devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
 ```
 
-A nova compilação usou `/workspace/sfm-environment/build.sh`, via script do repositório, em cópia descartável. Resultado local:
+Hashes desta compilação local:
 
 ```text
-SwitchFileManager.nro — 779992 bytes, versão NACP 0.10.8
-SHA-256: 9aa5dabdd87a426540b458fd78d36505ba9a51b9c2f3b3e18eb7d0ee012350cc
+SwitchFileManager.nro (800472 bytes)
+726f9e8e4fb7e6f147f42fb6f31800a0b771d0f374d931b2f3a654a8ed840338
 
-assets/icon.jpg — original 256×256
-SHA-256: 858ebcb92444859e77ba2485a9532bedda25254ddc00d3fca72517eb5ff38cca
+assets/icon.jpg
+858ebcb92444859e77ba2485a9532bedda25254ddc00d3fca72517eb5ff38cca
 ```
 
-O NRO novo voltou ao mesmo hash local registrado na Missão 1, como esperado para fontes/ícone inalterados no mesmo ambiente. Isso é resultado da compilação atual, não reaproveitamento do binário antigo como prova. Builds GitHub em outro diretório podem ter hashes próprios por dados de debug; seus sidecars são a referência para aquele download.
+Avisos restantes são de funções estáticas não usadas em stb_truetype e suporte de grandes arquivos em miniz; nenhum erro de compilação. Nenhum fonte precisou ser reescrito pelo build. Builds em diretórios distintos podem ter hash próprio por informações de debug; conferir o checksum que acompanha cada artefato.
 
-O pacote de SD e os checksums foram recriados e validados. O teste adicional abriu o NRO, localizou seu ASET e comparou exatamente o asset JPEG com `assets/icon.jpg`. A suíte não depende dos pacotes opcionais de renderização ou lint.
+## GitHub e executável experimental
 
-## Revisão visual da documentação
+O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) recebe os commits desta missão sem substituir o histórico. O [GitHub Actions](https://github.com/TemudjinBR/switch-file-manager/actions/workflows/build.yml) associa resultado, SHA validado e download `SwitchFileManager-validado`. O artefato contém NRO, ZIP para SD e checksums, sem configurações/credenciais. O resumo do PR identifica a execução remota final; um artefato de Actions não é uma Release.
 
-A página foi efetivamente aberta em Chromium, com inspeção visual das capturas do cabeçalho, catálogo, instalação e controles. Não se tratou apenas de compilar Markdown.
+Não houve alteração de main, merge, force-push ou publicação de Release.
 
-| Tamanho da janela | Largura da página | Logotipo |
-| --- | --- | --- |
-| Desktop 1440×1000 | 1440, sem overflow horizontal | 192×192, original carregado 256×256. |
-| Tablet 768×1024 | 768, sem overflow horizontal | Mesmas proporções. |
-| Smartphone 390×844 | 390, sem overflow horizontal | Mesmas proporções. |
-| Smartphone estreito 320×740 | 320, sem overflow horizontal | Mesmas proporções; título quebra naturalmente em duas linhas. |
+## Limites físicos
 
-Evidências visuais guardadas no repositório:
-
-- [Prévia desktop do README](validacao/missao2/readme-desktop.png).
-- [Prévia de smartphone do README](validacao/missao2/readme-mobile.png).
-
-**Essas imagens são prévias da documentação, não capturas do aplicativo no Switch.** Foi usado um renderizador local compatível e CSS de Markdown do GitHub; não se declara aqui uma captura do HTML produzido pelo servidor do GitHub. O cabeçalho usa apenas elementos compatíveis (`p`, `img`, `h1`, `strong`, `br`, `a`), sem estilos remotos obrigatórios ou imagem fictícia do aplicativo.
-
-## Estado do GitHub e limitação administrativa
-
-O trabalho continua no [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1), na branch `codex/reorganizacao-estabilizacao`. A execução de Actions da revisão final identifica o SHA validado e fornece o artefato `SwitchFileManager-validado`, com NRO, pacote e checksums. O envio é feito sem merge, edição direta da main, force-push ou publicação de Release.
-
-Descrição e tópicos do campo **Sobre não foram alterados**. O conector não expõe essa edição e a CLI recebeu `Forbidden` ao acessar a API; a política do executor é restrita. A proposta e o estado realmente observado estão em [MISSAO_2.md](MISSAO_2.md). É uma limitação externa declarada, não uma alteração supostamente concluída por editar o README.
-
-## O que não foi aprovado no console
-
-A especificação da Missão 2 trouxe um relato físico do proprietário, no Switch Lite, de **“Falha ao salvar login no cartão SD.”** na v0.10.8. A causa exata da persistência não foi confirmada. O erro permanece documentado e **não houve correção OAuth nem novo teste físico nesta execução**.
-
-Continuam pendentes a matriz de interface/controles/toque, SD FAT32/exFAT, persistência real, SSL/OAuth Google, FTP prolongado, arquivos grandes/ZIP64, fila, abertura de NROs e suspensão/retorno. Ver [TESTES.md](TESTES.md) e [PROBLEMAS_CONHECIDOS.md](PROBLEMAS_CONHECIDOS.md). O sucesso de testes no host não resolve nem invalida o relato do console.
+Não houve teste em Nintendo Switch, Google real, SD do proprietário, FAT32/exFAT real ou perda elétrica. O sucesso no host e a compilação não aprovam o login no hardware. A matriz física inclui primeira autorização, token existente/rotacionado, encerramento/reabertura, renovação, desconexão, nova tentativa e diagnóstico real de etapa/errno, usando dados de teste sem operações destrutivas.

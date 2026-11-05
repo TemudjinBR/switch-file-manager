@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>0.10.8 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
+  <strong>0.10.9 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
   Homebrew para Nintendo Switch desbloqueado com Atmosphère · C++17 e libnx
 </p>
 
@@ -32,7 +32,7 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 **Estado atual:** o aplicativo e esta revisão continuam experimentais. “Implementado” significa que o recurso existe no código e pode ser acionado; a validação automática, a compilação e os testes físicos são evidências distintas. Consulte a [matriz de testes](docs/TESTES.md) e o [relatório da revisão](docs/RELATORIO_VALIDACAO.md).
 
-> **Google Drive — problema conhecido no Switch Lite:** foi relatada a mensagem **“Falha ao salvar login no cartão SD.”** na v0.10.8. Ela indica uma falha na persistência local do token; a causa exata no console ainda não foi confirmada. Não é evidência de que o Google recusou a autorização. O [diagnóstico está documentado](docs/GOOGLE_DRIVE.md#falha-de-persistência-relatada-no-switch-lite) e não foi corrigido nesta missão de apresentação.
+> **Google Drive — problema conhecido no Switch Lite:** foi relatada a mensagem **“Falha ao salvar login no cartão SD.”** na v0.10.8. Ela indica uma falha na persistência local do token; a causa exata no console ainda não foi confirmada. Não é evidência de que o Google recusou a autorização. A **0.10.9 experimental** inclui correções de gravação, releitura, recuperação e mensagens, com etapa/errno, mas **ainda não foi validada no hardware**. Veja a [investigação e os limites da correção](docs/GOOGLE_DRIVE_PERSISTENCIA.md).
 
 ## Por que usar
 
@@ -49,7 +49,7 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 ## Funcionalidades
 
-O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.8. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
+O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.9. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
 
 ### 1. Interface e navegação
 
@@ -101,7 +101,7 @@ A fila aceita **até 20 tarefas**, cada uma podendo conter vários itens, soment
 - **Criar pastas**, **renomear itens**, **enviar para a lixeira**, renovar a autorização e desconectar/trocar de conta mediante confirmação.
 - Retornar um painel do Drive ao SD sem necessariamente desconectar a conta.
 
-A falha de gravação do login relatada no Switch Lite pode impedir concluir a conexão. **Mover SD ↔ Drive está bloqueado**, copiar diretamente Drive → Drive não é suportado, documentos nativos Google não são exportados e ZIP remoto não está disponível. A API usa HTTPS nativo no console; o formulário local de configuração usa HTTP na porta 8080 e deve ser aberto somente em rede confiável.
+A falha relatada na v0.10.8 motivou o candidato 0.10.9: o login só é confirmado após gravar e reler o token. Erros locais aparecem como **SD**, separados das respostas **Google** e de **Rede**; uma autorização recebida pode ser salva novamente pelo botão **Tentar salvar login novamente**, sem repetir a troca de código. O teste físico permanece pendente. **Mover SD ↔ Drive está bloqueado**, copiar diretamente Drive → Drive não é suportado, documentos nativos Google não são exportados e ZIP remoto não está disponível. A API usa HTTPS nativo no console; o formulário local de configuração usa HTTP na porta 8080 e deve ser aberto somente em rede confiável.
 
 [Configuração, capacidades, caminhos e limitações do Google Drive](docs/GOOGLE_DRIVE.md).
 
@@ -165,7 +165,7 @@ A galeria está preparada para receber imagens reais conforme o [guia de captura
 
 ## Como instalar
 
-1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.8 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
+1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.9 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
 2. **Baixe `SwitchFileManager.nro`** e o checksum correspondente. A Release v0.10.7 oferece o NRO avulso; não pressupõe o ZIP de distribuição criado no desenvolvimento atual.
 3. **Confira o SHA-256** com uma ferramenta de confiança e coloque o NRO em `sdmc:/switch/Switch File Manager/` no microSD. Se estiver usando o ZIP de teste, extraia sua pasta `switch` na raiz do cartão.
 4. **Abra pelo Homebrew Menu** em um console desbloqueado com Atmosphère. Preserve as configurações já existentes em `switch/switch-manager`.
@@ -218,7 +218,7 @@ O uso do FTP local não exige serviço pago. Drive requer conta e projeto OAuth 
 | `third_party/` | Bibliotecas incorporadas com seus créditos e licenças. |
 | `.github/workflows/` | CI e publicação manual com critérios separados. |
 
-A arquitetura modular anterior foi preservada. `VERSION` continua em **0.10.8** e é a fonte para NACP, pacote e log inicial. Esta missão de apresentação não altera o código C++, o fluxo OAuth ou o ícone do NRO.
+A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.9** e é a fonte para NACP, pacote e log inicial. A Missão 3 altera somente a persistência/autenticação Drive, seus diagnósticos e testes; o logotipo e as demais funcionalidades permanecem preservados.
 
 ```bash
 python3 tests/run.py
@@ -229,7 +229,7 @@ O script compila com devkitPro disponível ou com o ambiente em nuvem já prepar
 
 ## Limitações e próximos passos
 
-A falha de persistência do login Drive no Switch Lite permanece aberta. Interface, controles, SD FAT32/exFAT, SSL/OAuth reais, estabilidade FTP prolongada, arquivos grandes, fila, abertura de NROs e suspensão precisam de validação física específica. Os testes automatizados desta revisão são registrados separadamente no [relatório](docs/RELATORIO_VALIDACAO.md).
+A causa exata do relato no Switch Lite ainda exige confirmação física. A correção de software da 0.10.9 elimina a substituição incompatível com fsdev, preserva arquivos em falhas e fornece diagnósticos de etapa/errno; isso não comprova o login no console. Interface, controles, SD FAT32/exFAT, SSL/OAuth reais, estabilidade FTP prolongada, arquivos grandes, fila, abertura de NROs e suspensão precisam de validação física específica. Os testes automatizados desta revisão são registrados separadamente no [relatório](docs/RELATORIO_VALIDACAO.md).
 
 **Planejado, não disponível:** USB OTG e armazenamento externo, atualização automática, instalação de pacotes de jogos, novos provedores de nuvem e exportação de documentos Google. Não há prazo prometido. Consulte o [roadmap](docs/ROADMAP.md) e os [problemas conhecidos](docs/PROBLEMAS_CONHECIDOS.md).
 

@@ -18,6 +18,8 @@ flowchart TD
     ZIP --> Security
     ZIP --> Miniz[miniz]
     Cloud --> Core
+    Cloud --> Credentials[Persistência OAuth]
+    Credentials --> Logs
     UI --> STB[stb_truetype]
     App --> Logs[Diagnósticos]
     FTP --> Logs
@@ -32,7 +34,7 @@ flowchart TD
 - `security`: saneamento FAT/exFAT, aviso para pastas críticas e rejeição de caminhos ZIP absolutos ou com `..`.
 - `ui`: recursos gráficos, desenho e texto; falhas de fonte/framebuffer/memória são registradas. A aplicação recebe o estado da inicialização.
 - `network`: até quatro clientes FTP, porta 2121, sockets de controle/dados e contadores atômicos. A atualização dos painéis usa `fileChanges()`.
-- `cloud`: mantém HTTP/TLS, JSON e OAuth no mesmo módulo nesta etapa para preservar o fluxo existente. Produção usa SSL nativo; `HOST_TEST` redireciona a API para loopback, sem TLS.
+- `cloud`: mantém HTTP/TLS, JSON e OAuth em `gdrive.cpp`; `credential_store.cpp` separa persistência e recuperação. Produção usa SSL nativo; `HOST_TEST` redireciona a API para loopback, sem TLS.
 - `archives`: miniz, inspeção, compressão, extração, CRC, cancelamento e tratamento de erro ao finalizar saída.
 - `diagnostics`: mutex único de gravação, timestamp, linhas limitadas a 4096 bytes, retorno booleano e `lastErrorCode()`. Rotaciona antes de abrir quando o arquivo atinge 1 MiB; uma linha pode ultrapassar levemente o limiar. Mantém um backup. Falha de log não derruba o aplicativo; o erro aparece também em stderr quando muda.
 - `app`: modelo `Pane`, estados, menus, diálogos e integração de progresso. A extração de controladores é progressiva, não houve reescrita.
@@ -41,7 +43,7 @@ flowchart TD
 
 A cópia local recusa um destino existente usando criação exclusiva. A limpeza de falhas fica no módulo que criou a saída; a aplicação só limpa uma cópia concluída que reprovou na verificação. Mover no mesmo volume usa rename; no fallback copia e compara antes de remover a origem. A comparação não é uma transação e não bloqueia alterações concorrentes da origem.
 
-Downloads Drive conferem tamanho recebido e `Content-Range`. HTTP 416 e conteúdo insuficiente são falhas; não há preenchimento artificial para simular o tamanho esperado. Credenciais/tokens são gravados em temporário e substituídos após write/flush/fsync/close bem-sucedidos; não se trata de garantia contra qualquer falha elétrica do cartão.
+Downloads Drive conferem tamanho recebido e `Content-Range`. HTTP 416 e conteúdo insuficiente são falhas; não há preenchimento artificial para simular o tamanho esperado. Credenciais/tokens são gravados com escrita parcial tratada, fsync/close e releitura. O anterior vai a backup reservado e o candidato ao caminho legado, sempre com destino livre; falhas tentam restaurar o anterior. O login só é confirmado após outra releitura. Não há garantia de atomicidade contra falha elétrica nem lock contra outros processos. Ver [persistência OAuth](GOOGLE_DRIVE_PERSISTENCIA.md).
 
 Uploads FTP usam `.sfm-part`, criação exclusiva, sincronização e substituição com `.sfm-backup`. Temporários preexistentes são preservados. O serviço mantém acesso anônimo explicitamente avisado na UI; não oferece criptografia.
 
@@ -61,4 +63,4 @@ A Missão 2 preserva todos os módulos C++, headers, versão e imagem incorporad
 
 A validação de documentação usa `scripts/check_docs.py` (biblioteca padrão) para links Markdown/HTML, âncoras e referências a imagens. A renderização visual de revisão usa navegador e CSS de Markdown compatível com GitHub em arquivos temporários do ambiente; não entra no NRO e não depende de serviço pago. As prévias não são capturas do Switch.
 
-O relato de falha física na persistência do token Drive demonstra um limite que o host não reproduziu. A escrita temporária com sincronização e rename descrita acima não comprova sucesso no SD/libnx; consultar [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md).
+Na Missão 3, a reprodução passou a impor a semântica de rename sem sobrescrita do libnx. A incompatibilidade do código anterior foi demonstrada; o sucesso no SD físico continua pendente. Consultar [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md).

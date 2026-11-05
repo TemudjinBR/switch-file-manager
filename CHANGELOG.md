@@ -1,6 +1,16 @@
 # Histórico de alterações
 
-## 0.10.8 — em desenvolvimento (05/11/2026)
+## 0.10.9 — experimental, persistência OAuth (05/11/2026)
+
+- Persistência separada com mkdir verificado, escrita parcial/EINTR, sincronização, fechamento e releitura.
+- Substituição compatível com rename sem sobrescrita do libnx; backup, rollback e recuperação preservam arquivos anteriores.
+- Login confirmado somente depois de gravar/reler; nova tentativa local do candidato já autorizado.
+- Falhas SD identificam etapa/errno; respostas Google e erros de rede são distintos, sem registrar segredos.
+- Erros OAuth, inclusive invalid_grant, não removem tokens. Desconexão usa marcador e preserva token/credencial.
+- Testes com dados fictícios, falhas de armazenamento, semântica fsdev, renovação e primeiro login.
+- A falha com destino existente foi reproduzida no host; a causa exata do relato no Lite e a validação física permanecem pendentes. Sem Release.
+
+## 0.10.8 — base das Missões 1/2 (05/11/2026)
 
 - Fontes separados em aplicação, núcleo, interface, armazenamento, rede, nuvem, arquivos compactados, diagnósticos e segurança.
 - miniz e stb_truetype mantidos em `third_party`; ícone em `assets`; materiais antigos preservados em `docs/legacy` e notas em `release-notes`.

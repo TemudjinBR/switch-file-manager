@@ -1,6 +1,6 @@
 # Documentação do Switch File Manager
 
-A apresentação oficial está no [README principal](../README.md). A revisão do PR #1 usa **0.10.8 experimental**; a última Release pública verificada em 05/11/2026 é **v0.10.7**. Recursos implementados, resultados no host e validação física são classificados separadamente.
+A apresentação oficial está no [README principal](../README.md). A revisão do PR #1 usa **0.10.9 experimental**; a última Release pública verificada em 05/11/2026 é **v0.10.7**. Recursos implementados, resultados no host e validação física são classificados separadamente.
 
 ## Para usar o aplicativo
 
@@ -10,6 +10,7 @@ A apresentação oficial está no [README principal](../README.md). A revisão d
 | Botões, toque e contextos | [Controles](CONTROLES.md) |
 | Arquivos locais, favoritos, histórico, fila e espaço | [Armazenamento](ARMAZENAMENTO.md) |
 | Conta, configuração OAuth e falha de persistência no Lite | [Google Drive — experimental](GOOGLE_DRIVE.md) |
+| Correção candidata, hipóteses, algoritmo e diagnósticos do SD | [Persistência do login Drive — Missão 3](GOOGLE_DRIVE_PERSISTENCIA.md) |
 | Conexão local, comandos e limites | [FTP](FTP.md) |
 | Compactação, extração, inspeção e cancelamento | [ZIP](ZIP.md) |
 | Restrições e falhas abertas | [Problemas conhecidos](PROBLEMAS_CONHECIDOS.md) |
@@ -28,7 +29,9 @@ A apresentação oficial está no [README principal](../README.md). A revisão d
 | Mudanças por versão | [Changelog](../CHANGELOG.md) e [notas 0.10.8](../release-notes/v0.10.8.md) |
 | Marca e ícone que também entra no NRO | [Identidade oficial](../assets/branding/README.md) |
 | Bibliotecas, créditos e licenças preservadas | [Terceiros](../third_party/README.md) |
-| Execução, arquivos e limitações externas da Missão 2 | [Relatório de entrega](MISSAO_2.md) |
+| Histórico de apresentação e limitações externas da Missão 2 | [Relatório de entrega](MISSAO_2.md) |
+
+Os relatórios das [Missão 1](historico/VALIDACAO_MISSAO_1.md) e [Missão 2](historico/VALIDACAO_MISSAO_2.md) ficam preservados como evidências anteriores; o relatório principal acompanha a execução atual.
 
 ## Documentação ativa e material histórico
 

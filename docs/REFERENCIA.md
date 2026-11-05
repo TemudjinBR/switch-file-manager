@@ -22,6 +22,7 @@ Documento de entrada para uma pessoa ou IA continuar o projeto. O [índice de do
 | `src/storage/filesystem.cpp` | Consulta de arquivos, listagem com erros, tamanho e nomes disponíveis |
 | `src/storage/operations.cpp` | Cópia exclusiva, comparação integral, remoção e notificações de progresso independentes da UI |
 | `src/network/wifi_transfer.cpp` | FTP, sessões, sockets de dados, contadores e eventos |
+| `src/cloud/credential_store.cpp`, `include/cloud/credential_store.h` | Persistência OAuth, diagnóstico de E/S, backup e recuperação; sem exclusão automática |
 | `src/cloud/gdrive.cpp` | HTTPS libnx, parser JSON, OAuth, API Drive e servidor local de login |
 | `src/archives/zipx.cpp` | ZIP com miniz, progresso, cancelamento e CRC |
 | `src/diagnostics/logger.cpp` | Criação de diretórios, gravação, rotação e diagnóstico de falhas de log |
@@ -42,6 +43,8 @@ Documento de entrada para uma pessoa ou IA continuar o projeto. O [índice de do
 | --- | --- |
 | `sdmc:/switch/switch-manager/google.json` | Credencial OAuth individual |
 | `sdmc:/switch/switch-manager/token.txt` | Token de renovação |
+| Mesmo diretório, `login.disabled` | Desconexão persistente sem apagar token: 1 desativado, 0 habilitado |
+| Mesmo diretório, `*.sfm-old-NNN` e `*.sfm-new-NNN` | Backups e candidatos com segredos; preservar e não publicar |
 | `sdmc:/switch/switch-manager/favoritos.txt` | Favoritos |
 | `sdmc:/switch/switch-manager/historico.txt` | Histórico de navegação |
 | `sdmc:/switch/Switch File Manager/logs/sfm.log` | Log atual |
@@ -86,3 +89,11 @@ Resultados reproduzíveis: `docs/RELATORIO_VALIDACAO.md`, logs de Actions e arte
 - Resultados anteriores: [validação da Missão 1](historico/VALIDACAO_MISSAO_1.md). Resultados atuais: [relatório de validação](RELATORIO_VALIDACAO.md). As 37 aprovações antigas não devem ser reutilizadas como teste de uma revisão nova.
 - Descrição/tópicos administrativos: conferir o estado observado e a limitação de acesso em [MISSAO_2.md](MISSAO_2.md). Alterar README não equivale a alterar o campo Sobre.
 - PR #1 permanece o local de trabalho; não fazer merge, force-push, publicação de Release ou modificação direta da main nesta missão.
+
+## Continuidade após a Missão 3
+
+A versão experimental atual é **0.10.9**, no mesmo PR #1 e branch `codex/reorganizacao-estabilizacao`. Os trabalhos e relatórios das Missões 1/2 continuam preservados. Não houve alteração do logotipo, organização de pastas, FTP, ZIP ou dados pessoais.
+
+O fluxo Drive só confirma login após gravar e reler o token. Erros de armazenamento têm origem SD, etapa e errno; falhas Google/rede não apagam credenciais. A troca de arquivo evita sobrescrita por rename, pois libnx difere do POSIX do host. Nova tentativa de salvar usa o candidato já recebido, enquanto ele estiver na memória. Consultar [GOOGLE_DRIVE_PERSISTENCIA.md](GOOGLE_DRIVE_PERSISTENCIA.md) antes de alterar o algoritmo.
+
+A reprodução com EEXIST comprova uma incompatibilidade do código anterior; não identifica por si só a chamada que falhou no Lite do proprietário. A correção permanece candidata até validação física FAT32/exFAT, renovação e reinício. Resultados atuais em [RELATORIO_VALIDACAO.md](RELATORIO_VALIDACAO.md); os [resultados da Missão 2](historico/VALIDACAO_MISSAO_2.md) são históricos.

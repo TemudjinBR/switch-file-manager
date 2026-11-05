@@ -68,4 +68,12 @@ A raiz e os módulos foram preservados. O relatório anterior foi movido para `d
 
 O conector GitHub disponível expõe leitura de metadados e escrita de arquivos/PRs, mas não edição de descrição/tópicos. A tentativa de acesso à API pela CLI (`gh api repos/TemudjinBR/switch-file-manager`) devolveu `Forbidden`; a política de rede do executor não libera `api.github.com` na lista HTTP. Não se contornou essa restrição, não foram solicitadas credenciais e não se declarou o campo Sobre alterado. Proposta e estado observado ficam em [MISSAO_2.md](MISSAO_2.md).
 
-Os novos testes, build, revisão visual e validação remota são registrados no [relatório atual](RELATORIO_VALIDACAO.md). O escopo desta missão não inclui C++, OAuth, ícone do executável, main, merge ou Release.
+Os testes, build, revisão visual e validação remota dessa etapa são registrados no [relatório da Missão 2](historico/VALIDACAO_MISSAO_2.md). O escopo desta missão não inclui C++, OAuth, ícone do executável, main, merge ou Release.
+
+## Complemento da Missão 3 — 05/11/2026
+
+Antes de editar: branch correta e checkout limpo em `97382fc9d2cbee8f9dddabafccf3933da52a486a`, PR #1 aberto/sem merge, main preservada e Actions [42113511214](https://github.com/TemudjinBR/switch-file-manager/actions/runs/42113511214) aprovado com 45 testes. A suíte inicial foi reexecutada: 43 aprovados e dois casos dependentes de NRO explicitamente ignorados.
+
+A leitura integral do fluxo de token identificou mkdir sem verificação, renomeação sobre destino existente, estado de login antecipado e exclusão de token em invalid_grant/logout. O SDK real usa libnx 4.12.0-1 e devkitA64 r29.2-1. A implementação oficial fsdev delega rename ao serviço de arquivos sem substituição POSIX, mapeando destino existente para EEXIST; fsync é implementado via fsFileFlush e lstat é alias de stat.
+
+Um executável do código anterior com wrapper de rename sem sobrescrita reproduziu a mensagem exata ao receber HTTP 200 e tentar trocar um token existente. Isso comprova o defeito condicional, sem acesso ao errno do relato físico. Foram corrigidos persistência, confirmação e mensagens; [detalhes](GOOGLE_DRIVE_PERSISTENCIA.md) e [resultados desta revisão](RELATORIO_VALIDACAO.md). Não houve teste no cartão do proprietário.

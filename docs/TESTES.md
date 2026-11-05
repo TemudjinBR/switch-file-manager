@@ -2,7 +2,7 @@
 
 ## Separar execuções e relatos
 
-Os resultados da Missão 1 foram preservados em [histórico](historico/VALIDACAO_MISSAO_1.md). A Missão 2 executa novamente a suíte e a compilação; o [relatório atual](RELATORIO_VALIDACAO.md) identifica as evidências da revisão de documentação. O relato do proprietário sobre “Falha ao salvar login no cartão SD.” no Lite é registrado como falha física conhecida, sem supor que a equipe executou ou aprovou a matriz no console.
+Os resultados da Missão 1 foram preservados em [histórico](historico/VALIDACAO_MISSAO_1.md). A [Missão 2](historico/VALIDACAO_MISSAO_2.md) preserva sua validação anterior; o [relatório atual](RELATORIO_VALIDACAO.md) identifica a execução da Missão 3, sobre persistência OAuth. O relato do proprietário sobre “Falha ao salvar login no cartão SD.” no Lite é registrado como falha física conhecida, sem supor que a equipe executou ou aprovou a matriz no console.
 
 ## Execução reproduzível
 
@@ -20,7 +20,7 @@ python3 scripts/validate_nro.py SwitchFileManager.nro
 python3 tests/run.py --nro SwitchFileManager.nro
 python3 scripts/package.py
 (cd dist && sha256sum --check SwitchFileManager.nro.sha256)
-(cd dist && sha256sum --check SwitchFileManager-v0.10.8.zip.sha256)
+(cd dist && sha256sum --check SwitchFileManager-v0.10.9.zip.sha256)
 ```
 
 `bash scripts/build.sh` reúne testes, build, validação e pacote. No ambiente desta auditoria utiliza `/workspace/sfm-environment/build.sh`, que compila uma cópia descartável com a imagem devkitPro configurada. O build nativo também funciona com as variáveis DEVKITPRO/DEVKITA64 do README.
@@ -37,6 +37,8 @@ python3 scripts/package.py
 | ZIP | Compactação/extração com miniz real e comparação via `zipfile`, pastas vazias, ZIP inválido, cancelamento, traversal e falha de gravação final |
 | FTP | Processo do servidor real com sockets POSIX, modo ativo/passivo, upload/download, REST, nomes, pastas, renomeação/exclusão, destino temporário existente e rejeição de alvo ativo inválido |
 | Google Drive | Credenciais fictícias, renovação simulada, paginação, download, upload resumível básico, HTTP 401 com renovação, 403, 416, resposta incompleta e destino existente |
+| Persistência OAuth | Substituição sem sobrescrita no rename, escrita parcial, EINTR, zero bytes, ENOSPC, EROFS, EIO, sincronização indisponível, rollback, recuperação após saída abrupta, preservação dos anteriores e limite de slots |
+| Confirmação de login | Primeiro login, renovação/rotação, releitura obrigatória, retry local sem nova autorização, logout sem exclusão e erros SD/Google separados, com dados fictícios |
 | Servidor OAuth local | Formulário de credenciais/código e erro de armazenamento; somente dados fictícios |
 | NRO | Assinatura, segmentos, limites ASET, ícone, NACP, título, versão e rejeição de artefatos truncados/alterados |
 | Distribuição | Lista fechada de arquivos, hashes, conteúdo NRO, manifesto, ZIP íntegro e resultado idêntico com o mesmo NRO |
@@ -105,3 +107,11 @@ npm exec --yes --package markdownlint-cli2@0.18.1 -- markdownlint-cli2 README.md
 ```
 
 A configuração aceita os elementos HTML do cabeçalho, permite a primeira linha com logotipo antes do H1 e não impõe limite de linha a parágrafos/tabelas longos. Isso não desativa as verificações de links, imagens, âncoras ou hierarquia do restante do Markdown.
+
+## Regressão de persistência — Missão 3
+
+`tests/test_credential_store.py` compila o armazenamento de produção com injeção de falhas somente em `HOST_TEST`. Os hooks mantêm operações reais em diretórios temporários; não acessam o SD. `tests/host/fsdev_rename.cpp` recusa destino existente com EEXIST, reproduzindo a diferença relevante de libnx em relação ao POSIX do host. A saída abrupta entre as duas renomeações é simulada em subprocesso e seguida de nova carga. Isso não simula perda elétrica do controlador do cartão.
+
+`tests/test_network.py` exercita o servidor de login e o endpoint de tokens local, incluindo falhas de armazenamento após HTTP 200. Confere `isLoggedIn()`, arquivos, marcador de desconexão e mensagens; respostas simuladas não provam aprovação pelo Google real. Diagnósticos são examinados para ausência dos valores fictícios usados como segredos.
+
+Na matriz física do Drive, registrar também: primeira autorização, substituição de token já existente, encerramento/reabertura, renovação, nova tentativa local e desconexão persistente. Usar cartão/conta de teste; não provocar falhas destrutivas no SD do proprietário. Conferir `DRIVE_SD` com etapa/errno em `sdmc:/switch/Switch File Manager/logs/`. Detalhes em [persistência](GOOGLE_DRIVE_PERSISTENCIA.md).

@@ -1,6 +1,6 @@
 # Inventário completo de funcionalidades
 
-Revisão inventariada: **0.10.8 experimental**, código herdado do commit `8be971079763e6c74bb3b6f37f1e25d3b976e35f` no PR #1. A Missão 2 altera apresentação e documentação, sem alterar o C++ ou os recursos do NRO. O [catálogo para o usuário](../README.md#funcionalidades) apresenta os recursos; este documento permite conferi-los no código.
+O inventário de menus foi consolidado na **0.10.8 experimental**, revisão `97382fc` da Missão 2 no PR #1. Na **0.10.9 experimental**, a Missão 3 acrescenta somente a persistência recuperável do login, origem dos erros e repetição local de salvamento; os demais menus/recursos continuam os mesmos. O [catálogo para o usuário](../README.md#funcionalidades) apresenta os recursos; este documento permite conferi-los no código.
 
 ## Como ler os estados
 
@@ -18,7 +18,7 @@ Revisão inventariada: **0.10.8 experimental**, código herdado do commit `8be97
 | Seleção múltipla — implementado | `toggleMark`, `selectionMenu`, `Pane::marks`. Marcar todos visíveis, arquivos, pastas, inverter e limpar. As marcações de tipos são aditivas e respeitam o filtro; reload limpa as marcações. |
 | Organização/localização — implementado | `Pane::sortItems`, `applyFilter`, `sortMenu`, `favMenu`, `favoritesList`, `historyList`, `historyAdd`. Nome/tamanho/data/tipo, inversão, filtro local, atualização, favoritos e até 15 caminhos recentes salvos. Estado de ordenação/filtro é de sessão. |
 | Fila — implementado | `QueuedTransfer`, `enqueueTransfer`, `runTransferQueue`, `transferQueueMenu`, `QUEUE_LIMIT`. Até 20 tarefas, somente SD, copiar/mover, listar/executar/limpar e progresso. Em memória, sem persistência e sem transação de toda a tarefa. |
-| Google Drive — experimental | [gdrive.cpp](../src/cloud/gdrive.cpp): `loadCreds`, `tokenRequest`, `refreshToken`, `loginServerStart/Poll/Stop`, `listFolder`, `downloadFile`, `uploadFile`, `createFolder`, `renameItem`, `trashItem`, `logout`; main: `ensureDriveLogin`, `driveLoad`, `scanDriveTree`, `dlTree`, `ulTree`, `toggleDrive`, `cloudMenu`, `logoutAll`. Conta individual, OAuth manual, navegação/paginação, árvores SD↔Drive, pastas/nomes/lixeira, renovação e desconexão. Falha física de persistência do login relatada, não resolvida aqui. |
+| Google Drive — experimental | [gdrive.cpp](../src/cloud/gdrive.cpp): `loadCreds`, `tokenRequest`, `refreshToken`, `loginServerStart/Poll/Stop`, `listFolder`, `downloadFile`, `uploadFile`, `createFolder`, `renameItem`, `trashItem`, `logout`; main: `ensureDriveLogin`, `driveLoad`, `scanDriveTree`, `dlTree`, `ulTree`, `toggleDrive`, `cloudMenu`, `logoutAll`. Conta individual, OAuth manual, navegação/paginação, árvores SD↔Drive, pastas/nomes/lixeira, renovação e desconexão. Falha física relatada na 0.10.8; a 0.10.9 tem correção candidata e diagnósticos, ainda sem aprovação no hardware. Persistência isolada em [credential_store.cpp](../src/cloud/credential_store.cpp). |
 | FTP — implementado | [wifi_transfer.cpp](../src/network/wifi_transfer.cpp): `start`, `serve`, `session`, transferências e contadores; main: `wifiMenu`, `modal`, `drawMain`. Porta 2121, quatro clientes no código, leitura/escrita anônima, ativo/passivo, REST de download, eventos e refresh local. |
 | ZIP — implementado | [zipx.cpp](../src/archives/zipx.cpp): `inspect`, `compress`, `extract`; main: `zipMenu`, `showZipInfo`, `doCompressZip`, `doExtractZip`. Seleção local, modos rápido/sem compressão, destino atual/oposto, estatísticas, senha detectada/itens ignorados, CRC e cancelamento. |
 | Armazenamento/propriedades — implementado | `refreshSpace`, `propsText`, `doProperties`, `calcTree`, `doSpaceAnalyzer` em main. Total/livre/utilização SD, propriedades individuais e agregadas, arquivos/pastas, data quando disponível, até nove maiores itens imediatos. Totais podem ser incompletos; profundidade limitada no cálculo de propriedades. |
@@ -106,7 +106,7 @@ Abrir um ZIP também oferece Cancelar, Extrair aqui, Extrair no outro painel e I
 - Trocar de conta do Google, com confirmação Desconectar/Cancelar.
 - Diálogo de login: endereço local para o navegador do celular e Cancelar por B/toque.
 
-Voltar o painel ao SD conserva o login em memória. A desconexão confirmada chama `gd::logout`, remove o token salvo desse fluxo e volta os painéis Drive ao SD; não apaga a credencial `google.json`. A Missão 2 não executa essa ação sobre dados reais.
+Voltar o painel ao SD conserva o login em memória. A desconexão confirmada chama `gd::logout`, grava `login.disabled=1` e volta os painéis Drive ao SD. Token e credencial são preservados; novo login confirmado libera o estado com `0`. Se o marcador não puder ser gravado, a UI avisa que a desconexão persistente falhou. A Missão 2 não executa essa ação sobre dados reais.
 
 ### Transferência Wi-Fi e ações por contexto
 
@@ -127,4 +127,4 @@ Voltar o painel ao SD conserva o login em memória. A desconexão confirmada cha
 
 ## Evidências de teste
 
-A suíte de host testa módulos locais, logs, ZIP real, FTP em loopback e Drive simulado. A aplicação é compilada com devkitPro e o NRO é validado estruturalmente. **Menus, toque, controles, desempenho no console e OAuth/SSL reais não se tornam aprovados por esses resultados.** O relato de falha física de persistência é evidência de problema, não de aprovação da matriz do Switch. Resultados novos desta missão ficam no [relatório de validação](RELATORIO_VALIDACAO.md).
+A suíte de host testa módulos locais, logs, ZIP real, FTP em loopback e Drive simulado. A aplicação é compilada com devkitPro e o NRO é validado estruturalmente. **Menus, toque, controles, desempenho no console e OAuth/SSL reais não se tornam aprovados por esses resultados.** O relato de falha física de persistência é evidência de problema, não de aprovação da matriz do Switch. A Missão 3 exige token gravado e relido antes de confirmar a sessão, preserva dados diante de erros OAuth e permite tentar novamente a gravação local. Resultados novos desta missão ficam no [relatório de validação](RELATORIO_VALIDACAO.md).
