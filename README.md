@@ -1,36 +1,29 @@
-# Switch File Manager
+# Switch File Manager — v0.10.5
 
-Gerenciador de arquivos para Nintendo Switch com Atmosphère. Interface de dois painéis, operações locais, Google Drive e FTP.
+## Atualização FTP
+- Retirado **Listagens** da tela FTP.
+- Última atividade registra horário, endereço IP do cliente e eventos de conexão, desconexão, início e conclusão de transferências.
+- Retiradas mensagens repetitivas como “Recebendo: 125 MiB”.
+- Contadores de arquivos concluídos e total transferido continuam separados.
+- Mantida atualização automática das pastas após operações FTP (v0.10.4).
+- Versão do Homebrew Menu: **0.10.5**.
 
-## Versão v0.10.4 — atualização automática do FTP
-
-- Atualização dos contadores de clientes, listagens, arquivos concluídos e bytes enquanto a janela FTP está aberta.
-- Atualização automática dos dois painéis locais após envio, exclusão, renomeação ou criação de pasta pelo FTP.
-- Preserva o diretório atual: não é necessário sair e entrar novamente para enxergar o arquivo.
-- Versão 0.10.4 no Homebrew Menu.
-- FTP continua em `ftp://IP_DO_SWITCH:2121`, com acesso anônimo ao SD inteiro. Use somente rede confiável e desligue após transferir.
+**Observação:** o protocolo FTP não fornece necessariamente o nome do dispositivo. A identificação confiável é o IP.
 
 ## Histórico
-- v0.1.0: base e compilação.
+- v0.1.0: estrutura inicial.
 - v0.2.0: ícone e interface.
 - v0.3.0: seleção múltipla.
-- v0.4.0: proteção em operações.
+- v0.4.0: segurança de arquivos.
 - v0.5.0: verificação em movimentações.
 - v0.6.0: progresso e cancelamento.
-- v0.7.0: tratamento de falhas e parciais.
-- v0.8.0: fila de transferências.
-- v0.9.0: pré-varredura do Google Drive.
-- v0.10.0: Wi-Fi experimental.
-- v0.10.1: correção de endereço.
-- v0.10.2–v0.10.3: servidor FTP e indicadores.
-- v0.10.4: atualização automática de pastas e indicadores FTP.
+- v0.7.0: tratamento de falhas.
+- v0.8.0: fila de transferências (teste confirmado).
+- v0.9.0: melhorias do Drive (teste confirmado).
+- v0.10.0 a v0.10.4: rede Wi-Fi e FTP.
+- v0.10.5: painel FTP simplificado (aguarda compilação e teste).
 
-As versões até v0.9.0 tiveram testes confirmados pelo proprietário. O FTP foi testado funcionalmente pelo proprietário, que identificou a ausência de atualização visual. A v0.10.4 aguarda compilação e teste.
+## Instalação
+Substitua o `Makefile` e `README.md` e adicione `apply_ftp_status.py` à raiz. Mantenha os scripts anteriores `apply_ftp_update.py` e `apply_live_refresh.py`. O Makefile executa os três na ordem antes da compilação.
 
-## Compilação
-
-O Makefile aplica primeiro `apply_ftp_update.py` e depois `apply_live_refresh.py`, antes de compilar o projeto. Mantenha os dois scripts na raiz.
-
-## Segurança
-
-O FTP atual permite acesso anônimo de leitura e escrita ao cartão SD completo, sem criptografia. Não utilize redes públicas e desligue o servidor após o uso. Não faça testes destrutivos com arquivos importantes.
+**Segurança:** o FTP atual é anônimo e dá acesso ao SD inteiro. Utilize somente rede confiável e desligue após transferir.
