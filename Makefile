@@ -15,7 +15,7 @@ INCLUDES := .
 
 APP_TITLE := Switch File Manager
 APP_AUTHOR := TemudjinBR
-APP_VERSION := 0.10.6
+APP_VERSION := 0.10.7
 
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES)
@@ -54,6 +54,7 @@ $(BUILD):
 	@python3 $(CURDIR)/apply_live_refresh.py
 	@python3 $(CURDIR)/apply_ftp_status.py
 	@python3 $(CURDIR)/apply_ftp_performance.py
+	@python3 $(CURDIR)/apply_diagnostics.py
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 clean:
