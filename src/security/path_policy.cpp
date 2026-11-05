@@ -8,28 +8,29 @@ bool isCritical(std::string p) {
     return false;
 }
 
-std::string safeName(std::string n) {
-    for (auto& c : n)
-        if (strchr("\\/:*?\"<>|", c) || (unsigned char)c < 32) c = '_';
-    while (!n.empty() && (n.back() == '.' || n.back() == ' ')) n.pop_back();
-    while (n.size() > 200) n.pop_back();
-    while (!n.empty() && (((unsigned char)n.back() & 0xC0) == 0x80 || ((unsigned char)n.back() & 0xC0) == 0xC0)) n.pop_back();
-    return n.empty() ? std::string("sem_nome") : n;
+// Sanitização FAT/exFAT; conserva caracteres UTF-8 completos ao limitar o nome.
+static std::string cleanComp(std::string name) {
+    for (auto& c : name)
+        if (strchr("\\/:*?\"<>|", c) || static_cast<unsigned char>(c) < 32) c = '_';
+    if (name.size() > 200) {
+        size_t end = 200;
+        while (end > 0 && (static_cast<unsigned char>(name[end]) & 0xC0) == 0x80) --end;
+        name.resize(end);
+    }
+    while (!name.empty() && (name.back() == '.' || name.back() == ' ')) name.pop_back();
+    return name;
 }
 
-bool validName(const std::string& n) {
-    if (n.empty() || n == "." || n == "..") return false;
-    return n.find_first_of("/\\:*?\"<>|") == std::string::npos;
+std::string safeName(std::string name) {
+    name = cleanComp(name);
+    return name.empty() ? std::string("sem_nome") : name;
 }
 
-// limpa um componente de caminho para o cartão SD (FAT/exFAT)
-static std::string cleanComp(std::string n) {
-    for (auto& c : n)
-        if (strchr("\\/:*?\"<>|", c) || (unsigned char)c < 32) c = '_';
-    while (!n.empty() && (n.back() == '.' || n.back() == ' ')) n.pop_back();
-    while (n.size() > 200) n.pop_back();
-    while (!n.empty() && (((unsigned char)n.back() & 0xC0) == 0x80 || ((unsigned char)n.back() & 0xC0) == 0xC0)) n.pop_back();
-    return n;
+bool validName(const std::string& name) {
+    if (name.empty() || name == "." || name == ".." || name.size() > 255) return false;
+    if (name.back() == '.' || name.back() == ' ') return false;
+    for (unsigned char c : name) if (c < 32 || c == 127) return false;
+    return name.find_first_of("/\\:*?\"<>|") == std::string::npos;
 }
 
 // converte o caminho de dentro do zip em componentes seguros; false = caminho perigoso

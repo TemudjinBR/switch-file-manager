@@ -1,6 +1,7 @@
 #include "storage/filesystem.h"
 #include "core/paths.h"
 #include <dirent.h>
+#include <cerrno>
 #include <sys/stat.h>
 namespace sfm::storage {
 using sfm::paths::join;
@@ -22,16 +23,26 @@ std::string uniqueName(const std::string& p) {
     return p;
 }
 
-std::vector<std::string> listNames(const std::string& dirPath) {
-    std::vector<std::string> names;
-    DIR* d = opendir(dirPath.c_str());
-    if (!d) return names;
-    while (dirent* e = readdir(d)) {
-        std::string n = e->d_name;
-        if (n == "." || n == "..") continue;
-        names.push_back(n);
+bool readDirectory(const std::string& path, std::vector<std::string>& names, std::string& error) {
+    names.clear();
+    DIR* dir = opendir(path.c_str());
+    if (!dir) { error = "Não foi possível ler a pasta: " + path; return false; }
+    errno = 0;
+    while (dirent* entry = readdir(dir)) {
+        std::string name = entry->d_name;
+        if (name != "." && name != "..") names.push_back(name);
+        errno = 0;
     }
-    closedir(d);
+    int code = errno;
+    if (closedir(dir) != 0) code = errno;
+    if (code) { error = "Falha durante a leitura da pasta: " + path; return false; }
+    return true;
+}
+
+std::vector<std::string> listNames(const std::string& path) {
+    std::vector<std::string> names;
+    std::string error;
+    readDirectory(path, names, error);
     return names;
 }
 

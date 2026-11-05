@@ -13,10 +13,10 @@ from validate_nro import validate
 
 class InfrastructureTests(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(read_version(), '0.10.8')
+        self.assertRegex(read_version(), r'^\d+\.\d+\.\d+$')
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for bad in ('v1.2.3', '1.2', '01.2.3', '1.2.3\nINJECT=1'):
+            for bad in ('v1.2.3', '1.2', '01.2.3', '1.2.3\nINJECT=1', '1234567890.12345.6'):
                 (root / 'VERSION').write_text(bad)
                 with self.assertRaises(ValueError):
                     read_version(root)

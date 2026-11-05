@@ -1,4 +1,4 @@
-// Switch File Manager v0.10.7 - interface Commander, dois paineis e operacoes seguras
+// Switch File Manager - interface Commander, dois paineis e operacoes seguras
 // C++ / libnx (renderização por software, sem bibliotecas externas) + Google Drive
 
 #include <switch.h>
@@ -23,6 +23,7 @@
 
 #include "core/paths.h"
 #include "storage/filesystem.h"
+#include "storage/operations.h"
 #include "security/paths.h"
 #include "ui/renderer.h"
 using namespace sfm::paths;
@@ -343,7 +344,6 @@ static void drawMain() {
         int bx = 22 + i * 178;
         fillRound(bx, 646, 168, 58, 12, C_PANEL);
         fillRound(bx + 8, 655, 44, 39, 9, C_PAN2);
-        int kw = textWidth(fM, BTNS[i].key);
         int lx = bx + 58;
         drawText(fM, BTNS[i].key, bx + 30, 660, C_ACC, 40, 2);
         drawText(fM, BTNS[i].label, lx, 660, C_TXT, bx + 160 - lx);
@@ -571,129 +571,23 @@ static void showBusy(const std::string& text) {
     present();
 }
 
-static bool copyFile(const std::string& s, const std::string& d) {
-    FILE* in = fopen(s.c_str(), "rb");
-    if (!in) { g_err = "Não foi possível abrir: " + baseName(s); return false; }
-    const size_t BS = 1 << 20;
-    char* buf = (char*)malloc(BS);
-    if (!buf) { fclose(in); g_err = "Memória insuficiente."; return false; }
-    // Exclusividade: uma mudança no destino durante a operação não deve sobrescrever dados.
-    if (pathExists(d)) {
-        free(buf); fclose(in); g_err = "Destino já existe: " + baseName(d); return false;
-    }
-    FILE* out = fopen(d.c_str(), "wb");
-    if (!out) { free(buf); fclose(in); g_err = "Não foi possível criar: " + baseName(d); return false; }
-    bool ok = true;
-    size_t n;
-    while ((n = fread(buf, 1, BS, in)) > 0) {
-        if (fwrite(buf, 1, n, out) != n) { ok = false; g_err = "Falha ao gravar (cartão cheio?)."; break; }
-        g_pDone += n;
-        tickProgress();
-        if (g_cancel) { ok = false; g_err = "Cópia interrompida pelo usuário."; break; }
-    }
-    if (ok && fflush(out) != 0) { ok = false; g_err = "Falha ao descarregar dados no destino."; }
-    if (ferror(in)) { ok = false; g_err = "Falha ao ler: " + baseName(s); }
-    free(buf);
-    if (fclose(in) != 0) { ok = false; g_err = "Falha ao fechar arquivo de origem: " + baseName(s); }
-    // fclose pode detectar erro de gravação mesmo quando fwrite não detectou.
-    if (fclose(out) != 0) { ok = false; g_err = "Falha ao finalizar gravação: " + baseName(d); }
-    if (!ok) {
-        // Se não for possível limpar, avisar: nunca declarar que o destino está íntegro.
-        const std::string cause = g_err;
-        if (remove(d.c_str()) != 0)
-            g_err = cause + " Arquivo parcial permaneceu em: " + d;
-    } else if (g_pCountFiles) ++g_pFilesDone;
-    return ok;
-}
-
-static bool copyTree(const std::string& s, const std::string& d) {
-    if (g_cancel) return false;
-    g_pName = baseName(s);
-    if (isDir(s)) {
-        if (mkdir(d.c_str(), 0777) != 0) {
-            g_err = "Não foi possível criar a pasta: " + baseName(d);
-            return false;
-        }
-        for (auto& n : listNames(s))
-            if (!copyTree(join(s, n), join(d, n))) return false;
-        return true;
-    }
-    return copyFile(s, d);
-}
-
-// Verificação byte a byte, com memória limitada, antes de remover a origem.
-// Não é uma verificação criptográfica; compara integralmente os dados lidos.
-static bool verifyFileCopy(const std::string& source, const std::string& target) {
-    FILE* a = fopen(source.c_str(), "rb");
-    if (!a) { g_err = "Falha ao abrir origem para conferir: " + baseName(source); return false; }
-    FILE* b = fopen(target.c_str(), "rb");
-    if (!b) { fclose(a); g_err = "Falha ao abrir destino para conferir: " + baseName(target); return false; }
-    const size_t chunk = 64 * 1024;
-    char* x = (char*)malloc(chunk);
-    char* y = (char*)malloc(chunk);
-    if (!x || !y) {
-        free(x); free(y); fclose(a); fclose(b);
-        g_err = "Memória insuficiente para verificar a cópia.";
-        return false;
-    }
-    bool ok = true;
-    while (true) {
-        if (g_cancel) { ok = false; break; }
-        size_t nx = fread(x, 1, chunk, a);
-        size_t ny = fread(y, 1, chunk, b);
-        if (ferror(a) || ferror(b) || nx != ny || (nx && memcmp(x, y, nx) != 0)) {
-            ok = false; break;
-        }
-        if (!nx) break;
-        g_pName = "Verificando: " + baseName(source);
+struct LocalProgress : sfm::storage::Progress {
+    bool cancelled() const override { return g_cancel; }
+    void update(const std::string& name, uint64_t bytes, bool completed) override {
+        g_pName = name; g_pDone += bytes;
+        if (completed && g_pCountFiles) ++g_pFilesDone;
         tickProgress();
     }
-    free(x); free(y);
-    if (fclose(a) != 0 || fclose(b) != 0) ok = false;
-    if (!ok && !g_cancel) g_err = "Cópia diferente da origem ou erro de leitura: " + baseName(source);
-    return ok;
+};
+static LocalProgress g_localProgress;
+static bool copyTree(const std::string& source, const std::string& target) {
+    return sfm::storage::copyTree(source, target, &g_localProgress, g_err);
 }
-
 static bool verifyTreeCopy(const std::string& source, const std::string& target) {
-    if (g_cancel) return false;
-    bool dir = isDir(source);
-    if (dir != isDir(target)) {
-        g_err = "Tipo diferente no destino: " + baseName(source);
-        return false;
-    }
-    if (!dir) return verifyFileCopy(source, target);
-    auto names = listNames(source);
-    auto copied = listNames(target);
-    std::sort(names.begin(), names.end());
-    std::sort(copied.begin(), copied.end());
-    if (names != copied) {
-        g_err = "Conteúdo diferente na pasta: " + baseName(source);
-        return false;
-    }
-    for (const auto& n : names)
-        if (!verifyTreeCopy(join(source, n), join(target, n))) return false;
-    return true;
+    return sfm::storage::verifyTreeCopy(source, target, &g_localProgress, g_err);
 }
-
-static bool removeTree(const std::string& p) {
-    if (isDir(p)) {
-        // Não ocultar falhas em filhos: uma remoção parcial deve ser informada.
-        bool ok = true;
-        for (auto& n : listNames(p))
-            if (!removeTree(join(p, n))) ok = false;
-        g_pName = baseName(p);
-        tickProgress();
-        if (rmdir(p.c_str()) != 0) ok = false;
-        if (!ok) g_err = "Não foi possível apagar completamente: " + baseName(p);
-        return ok;
-    }
-    g_pName = baseName(p);
-    tickProgress();
-    if (remove(p.c_str()) != 0) {
-        g_err = "Não foi possível apagar: " + baseName(p);
-        return false;
-    }
-    return true;
+static bool removeTree(const std::string& path) {
+    return sfm::storage::removeTree(path, &g_localProgress, g_err);
 }
 
 static bool askText(const char* guide, const std::string& init, std::string& out) {
@@ -864,13 +758,14 @@ static bool dlTree(const Entry& e, const std::string& dstDir, std::string& outPa
     if (e.gdoc) { g_skipped++; return true; }
     g_pName = e.name;
     std::string dst = uniqueName(join(dstDir, safeName(e.name)));
-    if (depth == 0) outPath = dst;
+    if (depth == 0) outPath.clear();
     if (e.dir) {
         if (depth > 20) { g_err = "Pasta do Drive excede 20 níveis."; return false; }
         if (mkdir(dst.c_str(), 0777) != 0) {
             g_err = "Não foi possível criar pasta no SD: " + dst;
             return false;
         }
+        if (depth == 0) outPath = dst;  // somente a pasta que este pedido conseguiu criar
         std::vector<gd::Item> v;
         if (!gd::listFolder(e.id, v)) { g_err = gd::lastError(); return false; }
         for (auto& it : v) {
@@ -1221,12 +1116,13 @@ static void doCopyMove(bool move) {
                 g_pFilesDone += 1;
                 ok = true;
             } else {
-                ok = copyTree(from, to);
+                const bool copied = copyTree(from, to);
+                ok = copied;
                 if (ok && move) ok = verifyTreeCopy(from, to);
                 if (!ok) {
                     // Em caso de falha, manter a origem e tentar limpar a cópia incompleta.
                     std::string cause = g_err;
-                    if (!removeTree(to))
+                    if (copied && !removeTree(to))
                         g_err = cause + " ATENÇÃO: restos da cópia podem permanecer em " + to;
                     else
                         g_err = cause;
@@ -1667,7 +1563,6 @@ static void wifiMenu() {
 }
 
 static void actionsMenu() {
-    Pane& p = panes[active];
     std::vector<std::string> o = {
         "Copiar para o outro painel", "Mover para o outro painel", "Renomear",
         "Nova pasta", "Apagar", "Seleção múltipla...",
@@ -1811,5 +1706,5 @@ int main(int argc, char** argv) {
     wifi::stop();
     gd::netExit();
     shutdown();
-    return 0;
+    return graphicsReady ? 0 : 1;
 }

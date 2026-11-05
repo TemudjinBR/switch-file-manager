@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def read_version(root=ROOT):
     version = (root / 'VERSION').read_text(encoding='utf-8').strip()
-    if not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', version):
-        raise ValueError('VERSION deve conter uma versão X.Y.Z válida')
+    if len(version) > 15 or not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', version):
+        raise ValueError('VERSION deve conter X.Y.Z com até 15 caracteres (limite NACP)')
     return version
 
 

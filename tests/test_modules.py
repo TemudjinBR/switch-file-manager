@@ -16,7 +16,7 @@ class ModuleTests(unittest.TestCase):
         subprocess.run(['gcc', '-O2', '-c', str(ROOT / 'third_party/miniz/miniz.c'),
                         '-o', str(Path(cls.build.name) / 'miniz.o')], check=True, capture_output=True)
         sources = ['tests/host/modules.cpp', 'src/core/paths.cpp', 'src/storage/filesystem.cpp',
-                   'src/security/path_policy.cpp', 'src/diagnostics/logger.cpp', 'src/archives/zipx.cpp']
+                   'src/security/path_policy.cpp', 'src/storage/operations.cpp', 'src/diagnostics/logger.cpp', 'src/archives/zipx.cpp']
         subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-O2', '-pthread', '-I' + str(ROOT / 'include'),
                         '-I' + str(ROOT / 'third_party/miniz'), *[str(ROOT / p) for p in sources],
                         str(Path(cls.build.name) / 'miniz.o'), '-o', str(cls.binary)], check=True, capture_output=True)
@@ -116,3 +116,45 @@ class ModuleTests(unittest.TestCase):
         dest = self.root / 'cancelado'
         self.run_module('cancel-extract', archive, dest, success=False)
         self.assertFalse((dest / 'large.bin').exists())
+
+    @unittest.skipUnless(Path('/dev/full').exists(), 'Requer /dev/full')
+    def test_zip_reports_final_flush_failure(self):
+        archive = self.root / 'flush.zip'
+        with zipfile.ZipFile(archive, 'w') as z:
+            z.writestr('arquivo.txt', b'pequeno')
+        dest = self.root / 'flush'
+        dest.mkdir()
+        (dest / 'arquivo.txt').symlink_to('/dev/full')
+        self.run_module('extract', archive, dest, success=False)
+
+    def test_local_copy_verify_and_remove_tree(self):
+        source = self.root / 'original'
+        (source / 'vazio').mkdir(parents=True)
+        data = bytes(range(256)) * 10000
+        (source / 'arquivo.bin').write_bytes(data)
+        destination = self.root / 'copia'
+        self.run_module('copy', source, destination)
+        self.run_module('verify', source, destination)
+        self.assertEqual((destination / 'arquivo.bin').read_bytes(), data)
+        (destination / 'arquivo.bin').write_bytes(b'alterado')
+        self.run_module('verify', source, destination, success=False)
+        self.assertEqual((source / 'arquivo.bin').read_bytes(), data)
+        self.run_module('remove', destination)
+        self.assertFalse(destination.exists())
+        self.assertTrue(source.exists())
+
+    def test_local_copy_preserves_existing_destination(self):
+        source = self.root / 'origem.bin'; source.write_bytes(b'origem')
+        dest = self.root / 'destino.bin'; dest.write_bytes(b'preservar')
+        self.run_module('copy', source, dest, success=False)
+        self.assertEqual(dest.read_bytes(), b'preservar')
+        self.assertEqual(source.read_bytes(), b'origem')
+
+    def test_local_copy_cancellation_cleans_only_partial(self):
+        source = self.root / 'original'
+        source.mkdir()
+        (source / 'grande.bin').write_bytes(b'x' * 3000000)
+        dest = self.root / 'parcial'
+        self.run_module('cancel-copy', source, dest, success=False)
+        self.assertFalse(dest.exists())
+        self.assertEqual((source / 'grande.bin').stat().st_size, 3000000)

@@ -113,7 +113,8 @@ bool extract(const std::string& zipPath, const std::string& destDir, Progress* p
             if (pr && !pr->tick(got, comps.back().c_str())) { g_err = "Cancelado."; fileOk = false; ok = false; break; }
         }
         bool crcOk = mz_zip_reader_extract_iter_free(it);   // confere o CRC ao terminar
-        fclose(f);
+        if (fflush(f) != 0) { g_err = "Falha ao descarregar os dados extraídos no cartão."; fileOk = false; }
+        if (fclose(f) != 0) { g_err = "Falha ao fechar o arquivo extraído."; fileOk = false; }
         if (fileOk && !crcOk) { g_err = "O arquivo \"" + comps.back() + "\" está corrompido dentro do ZIP."; fileOk = false; }
         if (!fileOk) { remove(path.c_str()); ok = false; }
     }

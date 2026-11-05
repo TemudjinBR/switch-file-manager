@@ -106,10 +106,19 @@ static bool readFile(const std::string& p, std::string& out) {
 }
 
 static bool writeFile(const std::string& p, const std::string& data) {
-    FILE* f = fopen(p.c_str(), "wb");
-    if (!f) return false;
+    std::string temporary = p + ".tmp.XXXXXX";
+    std::vector<char> name(temporary.begin(), temporary.end());
+    name.push_back('\0');
+    int fd = mkstemp(name.data());
+    if (fd < 0) return false;
+    FILE* f = fdopen(fd, "wb");
+    if (!f) { close(fd); remove(name.data()); return false; }
     bool ok = fwrite(data.data(), 1, data.size(), f) == data.size();
-    fclose(f);
+    if (fflush(f) != 0) ok = false;
+    if (fsync(fileno(f)) != 0) ok = false;
+    if (fclose(f) != 0) ok = false;
+    if (ok && rename(name.data(), p.c_str()) != 0) ok = false;
+    if (!ok) remove(name.data());
     return ok;
 }
 
@@ -329,6 +338,7 @@ struct Sink {
 
 struct StrSink : Sink {
     std::string s;
+    void onHeaders(const Resp&) override { s.clear(); }  // uma resposta por tentativa, inclusive após HTTP 401
     bool put(const uint8_t* p, size_t n) override {
         if (s.size() + n > (64u << 20)) return false;
         s.append((const char*)p, n);
@@ -658,9 +668,9 @@ static bool tokenRequest(const std::string& form) {
     g_expiry = time(nullptr) + (ex > 0 ? ex : 3000);
     std::string rt = j.str("refresh_token");
     if (!rt.empty()) {
-        g_refresh = rt;
         ensureConfigDir();
-        writeFile(configDir() + "/token.txt", g_refresh);
+        if (!writeFile(configDir() + "/token.txt", rt)) { setErr("Falha ao salvar login no cartão SD."); return false; }
+        g_refresh = rt;
     }
     return true;
 }
@@ -773,6 +783,7 @@ struct FileSink : Sink {
     Progress* pr = nullptr;
     bool toFile = false;
     bool cancelled = false;
+    uint64_t received = 0, limit = 0;
     std::string errBody;
     void onHeaders(const Resp& r) override { toFile = (r.status == 200 || r.status == 206); }
     bool put(const uint8_t* p, size_t n) override {
@@ -780,18 +791,22 @@ struct FileSink : Sink {
             if (errBody.size() < 65536) errBody.append((const char*)p, n);
             return true;
         }
+        if (n > limit - received) { setErr("Resposta maior que o arquivo esperado."); return false; }
         if (fwrite(p, 1, n, f) != n) {
             setErr("Falha ao gravar no cartão SD (cheio, ou cartão FAT32 com limite de 4 GB por arquivo).");
             return false;
         }
+        received += n;
         if (pr && !pr->tick(n)) { cancelled = true; setErr("Cancelado."); return false; }
         return true;
     }
 };
 
 bool downloadFile(const Item& it, const std::string& dstPath, Progress* pr) {
-    FILE* f = fopen(dstPath.c_str(), "wb");
-    if (!f) { setErr("Não foi possível criar o arquivo no cartão SD."); return false; }
+    int fd = open(dstPath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) { setErr("Não foi possível criar o arquivo no cartão SD (destino existente ou indisponível)."); return false; }
+    FILE* f = fdopen(fd, "wb");
+    if (!f) { close(fd); remove(dstPath.c_str()); setErr("Falha ao abrir destino do download."); return false; }
     bool ok = true;
     const uint64_t CH = 16ull << 20;
     uint64_t pos = 0;
@@ -801,8 +816,9 @@ bool downloadFile(const Item& it, const std::string& dstPath, Progress* pr) {
         std::vector<std::string> h = {"Range: bytes=" + std::to_string(pos) + "-" + std::to_string(end)};
         bool done = false;
         for (int attempt = 0; attempt < 3 && !done; attempt++) {
-            fseeko(f, (off_t)pos, SEEK_SET);
+            if (fseeko(f, (off_t)pos, SEEK_SET) != 0) { setErr("Falha ao posicionar destino do download."); ok = false; break; }
             FileSink fs;
+            fs.limit = it.size - pos;
             fs.f = f;
             fs.pr = pr;
             Resp r;
@@ -810,20 +826,22 @@ bool downloadFile(const Item& it, const std::string& dstPath, Progress* pr) {
                 if (fs.cancelled) { ok = false; break; }
                 continue;
             }
-            if (r.status == 206) { done = true; pos = end + 1; }
-            else if (r.status == 200 && pos == 0) { done = true; pos = it.size; }
-            else if (r.status == 416) { done = true; pos = it.size; }
+            if (r.status == 206) {
+                const std::string expectedRange = "bytes " + std::to_string(pos) + "-" + std::to_string(end) + "/" + std::to_string(it.size);
+                if (fs.received == end - pos + 1 && r.h["content-range"] == expectedRange) {
+                    done = true; pos = end + 1;
+                } else setErr("Download incompleto ou intervalo de bytes inválido.");
+            }
+            else if (r.status == 200 && pos == 0 && fs.received == it.size) { done = true; pos = it.size; }
+            else if (r.status == 416) { setErr("O servidor recusou o intervalo do download."); ok = false; break; }
             else if (r.status >= 500 || r.status == 429) continue;
             else { setErr(apiErrorText(fs.errBody, r.status)); ok = false; break; }
         }
         if (ok && !done) { if (g_err.empty()) setErr("Falha ao baixar o arquivo."); ok = false; }
     }
-    if (ok) {
-        fflush(f);
-        if (ftruncate(fileno(f), (off_t)it.size) != 0) { /* ignora */ }
-    }
-    fclose(f);
-    if (!ok) remove(dstPath.c_str());
+    if (ok && (fflush(f) != 0 || fsync(fileno(f)) != 0)) { setErr("Falha ao finalizar a gravação do download."); ok = false; }
+    if (fclose(f) != 0) { setErr("Falha ao fechar o download."); ok = false; }
+    if (!ok && remove(dstPath.c_str()) != 0) setErr("Falha no download; arquivo parcial permaneceu no destino.");
     return ok;
 }
 
@@ -1094,10 +1112,15 @@ int loginServerPoll() {
             sendHtml(c, 400, pageMain("Esse arquivo não parece ser a credencial do Google. Escolha o arquivo client_secret...json."));
         } else {
             ensureConfigDir();
-            writeFile(configDir() + "/google.json", json);
-            g_creds = Creds();
-            loadCreds();
-            sendHtml(c, 200, pageMain("Credencial salva! Agora faça o passo 1 e o passo 2."));
+            if (!writeFile(configDir() + "/google.json", json)) {
+                setErr("Não foi possível salvar a credencial no cartão SD.");
+                sendHtml(c, 400, pageMain(g_err));
+                result = -1;
+            } else {
+                g_creds = Creds();
+                loadCreds();
+                sendHtml(c, 200, pageMain("Credencial salva! Agora faça o passo 1 e o passo 2."));
+            }
         }
     } else if (line.compare(0, 10, "POST /code") == 0) {
         std::string code = extractCode(formField(body, "u"));

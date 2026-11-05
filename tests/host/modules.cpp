@@ -1,5 +1,6 @@
 #include "core/paths.h"
 #include "storage/filesystem.h"
+#include "storage/operations.h"
 #include "security/paths.h"
 #include "sfm_diag.h"
 #include "zipx.h"
@@ -9,6 +10,11 @@
 #include <vector>
 #include <cerrno>
 
+struct LocalCancel : sfm::storage::Progress {
+    bool stop = false;
+    bool cancelled() const override { return stop; }
+    void update(const std::string&, uint64_t bytes, bool) override { if (bytes) stop = true; }
+};
 struct Cancel : zx::Progress {
     bool tick(uint64_t, const char*) override { return false; }
 };
@@ -23,7 +29,8 @@ int main(int argc, char** argv) {
         if (join("sdmc:/", "a") != "sdmc:/a" || parentOf("sdmc:/a/b/") != "sdmc:/a" ||
             parentOf("sdmc:/") != "sdmc:/" || baseName("sdmc:/a/") != "a" ||
             !isCritical("sdmc:/atmosphere/") || isCritical("sdmc:/atmosphere-backup") ||
-            validName("../a") || validName("..")) return 1;
+            validName("../a") || validName("..") || validName("linha\nquebrada") || validName("final.") ||
+            safeName("café") != "café" || safeName(std::string(199, 'a') + "é").size() != 199) return 1;
         std::vector<std::string> parts;
         for (auto bad : {"../x", "a/../../x", "/absolute", "C:\\outside", "a\\..\\x"})
             if (safeComponents(bad, parts)) return 1;
@@ -31,6 +38,18 @@ int main(int argc, char** argv) {
         std::ofstream("file.txt") << "abc";
         if (treeSize("file.txt") != 3 || uniqueName("file.txt") != "file (1).txt") return 1;
         std::cout << kLegacyConfigDir << '\n' << kLogFile << '\n';
+        return 0;
+    }
+    if ((command == "copy" || command == "verify" || command == "cancel-copy") && argc == 4) {
+        std::string error; LocalCancel cancel;
+        bool ok = command == "verify" ? sfm::storage::verifyTreeCopy(argv[2], argv[3], nullptr, error) :
+            sfm::storage::copyTree(argv[2], argv[3], command == "cancel-copy" ? &cancel : nullptr, error);
+        if (!ok) std::cerr << error;
+        return ok ? 0 : 1;
+    }
+    if (command == "remove" && argc == 3) {
+        std::string error;
+        if (!sfm::storage::removeTree(argv[2], nullptr, error)) { std::cerr << error; return 1; }
         return 0;
     }
     if (command == "log") {

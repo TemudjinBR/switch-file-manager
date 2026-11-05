@@ -26,7 +26,11 @@
 
 namespace wifi {
 namespace {
+#ifdef HOST_TEST
+constexpr int PORT = 0;  // porta efêmera; somente loopback nos testes
+#else
 constexpr int PORT = 2121;
+#endif
 const std::string ROOT = "sdmc:/";
 std::atomic<bool> active{false};
 std::atomic<uint64_t> totalBytes{0}, transferBytes{0};
@@ -153,7 +157,11 @@ int passiveListener() {
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
+    #ifdef HOST_TEST
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+#else
     addr.sin_addr.s_addr = INADDR_ANY;
+#endif
     addr.sin_port = 0;
     if (bind(fd, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(fd, 1) != 0) {
         close(fd); return -1;
@@ -507,13 +515,22 @@ bool start(std::string& error) {
     int yes = 1; setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
+    #ifdef HOST_TEST
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+#else
     addr.sin_addr.s_addr = INADDR_ANY;
+#endif
     addr.sin_port = htons(PORT);
     if (bind(listener, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(listener, 4) != 0) {
         close(listener); listener = -1;
         error = "Porta FTP 2121 indisponivel";
         socketExit(); netReady = false; return false;
     }
+#ifdef HOST_TEST
+    sockaddr_in local{};
+    local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    bool ipOK = true;
+#else
     int probe = socket(AF_INET, SOCK_DGRAM, 0);
     sockaddr_in local{};
     bool ipOK = false;
@@ -528,13 +545,19 @@ bool start(std::string& error) {
         }
         close(probe);
     }
+#endif
     if (!ipOK) {
         close(listener); listener = -1;
         socketExit(); netReady = false;
         error = "Nao foi possivel detectar o IP do Wi-Fi";
         return false;
     }
-    address = "ftp://" + std::string(inet_ntoa(local.sin_addr)) + ":" + std::to_string(PORT);
+    sockaddr_in bound{}; socklen_t boundSize = sizeof(bound);
+    if (getsockname(listener, (sockaddr*)&bound, &boundSize) != 0) {
+        close(listener); listener = -1; socketExit(); netReady = false;
+        error = "Falha ao consultar porta FTP"; return false;
+    }
+    address = "ftp://" + std::string(inet_ntoa(local.sin_addr)) + ":" + std::to_string(ntohs(bound.sin_port));
     transfersDone = 0; totalBytes = 0; transferBytes = 0;listingsDone=0;connectedClients=0;changesDone=0;
     event("Aguardando conexao");
     active = true;
