@@ -1,38 +1,49 @@
-SWITCH FILE MANAGER v0.10.2 - ATUALIZACAO FTP
-=============================================
+SWITCH FILE MANAGER v0.10.3 — CORRECAO FTP + JANELAS
+===================================================
 
 Repositorio: https://github.com/TemudjinBR/switch-file-manager
-Destino no GitHub: raiz da branch main
 
-PARA PUBLICAR PELO CELULAR (CAMINHO JA USADO NAS VERSOES ANTERIORES)
+PUBLICAR COM O CELULAR (MESMO METODO DAS VERSOES ANTERIORES)
 
-1. Extrair este ZIP no celular.
-2. Abrir https://github.com/TemudjinBR/switch-file-manager/upload/main
-3. Selecionar os arquivos Makefile, wifi_transfer.cpp, wifi_transfer.h,
-   apply_ftp_update.py e CHANGELOG-v0.10.2.md, todos para a RAIZ.
-4. Confirmar 'Commit changes'. O GitHub Actions existente sera acionado.
-5. Conferir resultado em https://github.com/TemudjinBR/switch-file-manager/actions
-   e, se a compilacao terminar com sucesso, baixar o artefato NRO.
+1. Descompacte este arquivo no smartphone Android.
+2. Abra https://github.com/TemudjinBR/switch-file-manager/upload/main
+3. Selecione estes CINCO arquivos extraidos e envie todos na raiz:
+   - Makefile
+   - wifi_transfer.cpp
+   - wifi_transfer.h
+   - apply_ftp_update.py
+   - CHANGELOG-v0.10.3.md
+4. Confirme Commit changes.
+5. Abra https://github.com/TemudjinBR/switch-file-manager/actions
+   e baixe o artefato SwitchFileManager.nro se a compilacao concluir.
+6. Substitua o NRO antigo no SD pela versao compilada para testar.
 
-IMPORTANTE:
-- Nao enviar o ZIP compactado como um unico arquivo ao repositorio:
-  e necessario enviar os arquivos internos.
-- Nao substituir a pasta .github nem o arquivo main.cpp manualmente.
-- A versao 0.10.2 no Homebrew e gerada pelo Makefile, que executa
-  automaticamente apply_ftp_update.py antes da compilacao.
-- Sem recompilacao/instalacao do NRO, o servidor antigo HTTP permanece ativo.
-- FTP usa cliente FTP (ex.: gerenciador de arquivos Android), nao navegador.
-- Endereco exibido pelo Switch: ftp://IP-DO-SWITCH:2121
-- FTP anonimo sem senha; inicia por comando, para pelo menu ou quando sair.
+Nao envie o ZIP inteiro como se fosse um arquivo de codigo no GitHub.
+Nao substitua manualmente main.cpp: apply_ftp_update.py atualiza essa
+parte antes da compilacao. A versao 0.10.3 e gerada pelo Makefile.
 
-VALIDADO AQUI:
-- Compilacao isolada do servidor C++17 em Linux com simulacao de libnx.
-- Testes reais de protocolo FTP no host (ftplib): conectar, listar,
-  criar pasta, enviar, baixar, sobrescrever, renomear, excluir e parar.
-- Teste de interrupcao de upload com limpeza de arquivo parcial.
-- Script apply_ftp_update.py passou em verificacao de sintaxe e em teste
-  de idempotencia sobre uma amostra das funcoes atuais.
+NO SWITCH
+  Acoes > Transferencia Wi-Fi > Iniciar FTP.
+  Aparece ftp://IP-DO-SWITCH:2121.
+  Manter ativo deixa servidor ligado, Parar servidor FTP o desliga.
 
-AINDA PENDENTE:
-- Compilacao real do projeto com devkitA64 via GitHub Actions.
-- Teste fisico no Switch Lite / Atmosphere e em gerenciador FTP Android.
+NO CELULAR
+  Abra gerenciador com suporte a FTP, protocolo FTP sem TLS/SSL.
+  Endereco: IP mostrado pelo Switch.
+  Porta: 2121.
+  Login: Anonimo (sem senha).
+  Preferir modo passivo; agora modo ativo tambem e aceito.
+
+A tela do Switch agora apresenta clientes conectados e listagens.
+Se o Android mostrar vazio, verifique no Switch se esses contadores
+mudam; isso permite identificar se o cliente estabeleceu conexao FTP
+ou se falhou antes de pedir a listagem.
+
+TESTADO LOCALMENTE: compilacao isolada C++ em Linux, operacoes FTP
+em modos ativo e passivo com dois clientes simultaneos, stop imediato.
+
+NAO TESTADO: build devkitA64 real no GitHub Actions, Switch Lite fisico,
+cliente FTP Android. Essas etapas dependem do novo artefato NRO.
+
+SEGURANCA: acesso anonimo integral ao SD enquanto ativo;
+use apenas rede confiavel e desligue ao terminar.

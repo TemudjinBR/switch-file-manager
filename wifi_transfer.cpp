@@ -13,6 +13,9 @@
 #include <thread>
 #include <string>
 #include <vector>
+#include <array>
+#include <mutex>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -27,7 +30,18 @@ const std::string ROOT = "sdmc:/";
 std::atomic<bool> active{false};
 std::atomic<uint64_t> totalBytes{0}, transferBytes{0};
 std::atomic<unsigned> transfersDone{0};
-std::atomic<int> controlSocket{-1};
+constexpr int MAX_CLIENTS = 4;
+struct ClientSlot {
+    std::atomic<bool> busy{false};
+    std::atomic<int> control{-1};
+    std::atomic<int> data{-1};
+    std::thread thread;
+};
+std::array<ClientSlot, MAX_CLIENTS> clients;
+std::atomic<unsigned> listingsDone{0}, connectedClients{0};
+std::mutex eventLock;
+std::string lastEvent="Aguardando conexao";
+void event(const std::string& msg){std::lock_guard<std::mutex> guard(eventLock);lastEvent=msg;}
 int listener = -1;
 std::thread worker;
 bool netReady = false;
@@ -152,7 +166,7 @@ int acceptData(int passive, int control) {
             ctrlPeer.sin_addr.s_addr != remote.sin_addr.s_addr) {
             close(data); continue;
         }
-        timeval timeout{2, 0};
+        timeval timeout{20, 0};
         setsockopt(data, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         setsockopt(data, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
         return data;
@@ -215,11 +229,15 @@ bool finalizeUpload(const std::string& dest, const std::string& part) {
     rename(backup.c_str(), dest.c_str());
     return false;
 }
-void session(int fd) {
-    controlSocket = fd;
+void session(int fd, int slotIndex) {
+    ClientSlot& slot = clients[slotIndex];
+    connectedClients++;
+    event("Celular conectado");
     reply(fd, 220, "Switch File Manager FTP ready");
     std::string cwd = ROOT, pendingRename, cmd;
     int passive = -1;
+    bool activeMode=false;
+    sockaddr_in activeAddr{};
     uint64_t restartAt = 0;
     auto resetPasv = [&]() { if (passive >= 0) { close(passive); passive = -1; } };
     while (active && readLine(fd, cmd)) {
@@ -227,15 +245,16 @@ void session(int fd) {
         std::string op = cmd.substr(0, space);
         std::transform(op.begin(), op.end(), op.begin(), [](unsigned char c) { return (char)std::toupper(c); });
         std::string arg = space == std::string::npos ? "" : cmd.substr(space + 1);
-        if (op == "USER" || op == "PASS") { reply(fd, 230, "Anonymous access granted"); continue; }
+        if (op == "USER") { reply(fd, 331, "Anonymous login, enter any password"); continue; }
+        if (op == "PASS") { reply(fd, 230, "Anonymous access granted"); continue; }
         if (op == "QUIT") { reply(fd, 221, "Goodbye"); break; }
         if (op == "NOOP") { reply(fd, 200, "OK"); continue; }
         if (op == "SYST") { reply(fd, 215, "UNIX Type: L8"); continue; }
         if (op == "FEAT") {
-            const std::string feat = "211-Features:\r\n UTF8\r\n EPSV\r\n PASV\r\n SIZE\r\n MDTM\r\n MLSD\r\n REST STREAM\r\n211 End\r\n";
+            const std::string feat = "211-Features:\r\n UTF8\r\n EPSV\r\n PASV\r\n SIZE\r\n MDTM\r\n MLSD\r\n MLST type*;size*;modify*;\r\n REST STREAM\r\n211 End\r\n";
             writeAll(fd, feat.data(), feat.size()); continue;
         }
-        if (op == "OPTS" || op == "TYPE" || op == "MODE" || op == "STRU" || op == "ALLO") {
+        if (op == "OPTS" || op == "TYPE" || op == "MODE" || op == "STRU" || op == "ALLO" || op == "CLNT") {
             reply(fd, 200, "OK"); continue;
         }
         if (op == "PWD" || op == "XPWD") { reply(fd, 257, "\"" + virtualPath(cwd) + "\""); continue; }
@@ -251,6 +270,7 @@ void session(int fd) {
         }
         if (op == "STAT") { reply(fd, 211, "FTP active; transfers: " + std::to_string(transfersDone.load())); continue; }
         if (op == "PASV" || op == "EPSV") {
+            activeMode=false;
             resetPasv();
             passive = passiveListener();
             if (passive < 0) { reply(fd, 425, "Cannot open data port"); continue; }
@@ -266,8 +286,33 @@ void session(int fd) {
             }
             continue;
         }
-        if (op == "PORT" || op == "EPRT") { reply(fd, 502, "Use passive FTP"); continue; }
-        if (op == "ABOR") { resetPasv(); reply(fd, 226, "Aborted"); continue; }
+        if (op == "PORT" || op == "EPRT") {
+            resetPasv(); activeMode=false;
+            sockaddr_in peer{}; socklen_t peerLen=sizeof(peer);
+            if(getpeername(fd,(sockaddr*)&peer,&peerLen)!=0){reply(fd,501,"Peer not found");continue;}
+            sockaddr_in target{};target.sin_family=AF_INET;
+            int port=0;
+            if(op=="PORT"){
+                unsigned a[6];char extra=0;
+                if(sscanf(arg.c_str(),"%u,%u,%u,%u,%u,%u%c",&a[0],&a[1],&a[2],&a[3],&a[4],&a[5],&extra)!=6 ||
+                    a[0]>255||a[1]>255||a[2]>255||a[3]>255||a[4]>255||a[5]>255){reply(fd,501,"Invalid PORT");continue;}
+                char ip[32];snprintf(ip,sizeof(ip),"%u.%u.%u.%u",a[0],a[1],a[2],a[3]);
+                if(inet_pton(AF_INET,ip,&target.sin_addr)!=1){reply(fd,501,"Invalid IP");continue;}
+                port=(a[4]<<8)|a[5];
+            }else{
+                // EPRT |1|ipv4|port|, delimiter can be any printable char
+                if(arg.size()<7){reply(fd,501,"Invalid EPRT");continue;}
+                char delim=arg[0];size_t b=arg.find(delim,1),c=arg.find(delim,b==std::string::npos?b:b+1),d=arg.find(delim,c==std::string::npos?c:c+1);
+                if(b==std::string::npos||c==std::string::npos||d!=arg.size()-1||arg.substr(1,b-1)!="1") {reply(fd,522,"IPv4 only");continue;}
+                std::string ip=arg.substr(b+1,c-b-1),num=arg.substr(c+1,d-c-1);
+                if(num.empty()||num.find_first_not_of("0123456789")!=std::string::npos||num.size()>5||inet_pton(AF_INET,ip.c_str(),&target.sin_addr)!=1){reply(fd,501,"Invalid EPRT");continue;}
+                port=atoi(num.c_str());
+            }
+            if(port<1024||port>65535||target.sin_addr.s_addr!=peer.sin_addr.s_addr){reply(fd,501,"Active data target denied");continue;}
+            target.sin_port=htons(port);activeAddr=target;activeMode=true;
+            reply(fd,200,"Active connection configured");continue;
+        }
+        if (op == "ABOR") { resetPasv(); activeMode=false; reply(fd, 226, "Aborted"); continue; }
         if (op == "CDUP" || op == "XCUP") arg = "..";
         if (op == "LIST" && !arg.empty() && arg[0] == '-') arg.clear();
         std::string path;
@@ -279,6 +324,15 @@ void session(int fd) {
             struct stat st{};
             if (stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) reply(fd, 213, std::to_string((unsigned long long)st.st_size));
             else reply(fd, 550, "Not a file");
+        } else if (op == "MLST") {
+            struct stat st{};
+            if(stat(path.c_str(),&st)!=0){reply(fd,550,"Not found");continue;}
+            std::string facts="type="+std::string(S_ISDIR(st.st_mode)?"dir":"file")+
+                ";size="+std::to_string((unsigned long long)st.st_size)+
+                ";modify="+stamp(st.st_mtime)+";";
+            std::string result="250-Listing\r\n "+facts+" "+virtualPath(path)+"\r\n250 End\r\n";
+            writeAll(fd,result.data(),result.size());
+            continue;
         } else if (op == "MDTM") {
             struct stat st{};
             if (stat(path.c_str(), &st) == 0) reply(fd, 213, stamp(st.st_mtime));
@@ -300,7 +354,7 @@ void session(int fd) {
             else reply(fd, 550, "Rename failed");
             pendingRename.clear();
         } else if (op == "LIST" || op == "NLST" || op == "MLSD" || op == "RETR" || op == "STOR") {
-            if (passive < 0) { reply(fd, 425, "Use passive mode first"); continue; }
+            if (passive < 0 && !activeMode) { reply(fd, 425, "Use PASV, EPSV or PORT first"); continue; }
             bool isListing = op == "LIST" || op == "NLST" || op == "MLSD";
             if ((isListing && !isDir(path)) || (op == "RETR" && !isRegular(path)) ||
                 (op == "STOR" && (path == ROOT || !parentExists(path) || (exists(path) && !isRegular(path))))) {
@@ -321,19 +375,42 @@ void session(int fd) {
             restartAt = 0;
             if (!isListing && !file) { resetPasv(); reply(fd, 550, "Cannot open file"); continue; }
             transferBytes = 0;
-            reply(fd, 150, "Opening passive data connection");
-            int data = acceptData(passive, fd);
-            resetPasv();
+            reply(fd, 150, "Opening data connection");
+            int data=-1;
+            if(activeMode) {
+                data=socket(AF_INET,SOCK_STREAM,0);
+                if(data>=0){
+                    timeval t{4,0};setsockopt(data,SOL_SOCKET,SO_SNDTIMEO,&t,sizeof(t));
+                    // Nonblocking connect avoids hanging the Switch when the phone is unreachable.
+                    int flags=fcntl(data,F_GETFL,0);
+                    if(flags>=0)fcntl(data,F_SETFL,flags|O_NONBLOCK);
+                    int rc=connect(data,(sockaddr*)&activeAddr,sizeof(activeAddr));
+                    if(rc!=0&&errno==EINPROGRESS){
+                        fd_set writable;FD_ZERO(&writable);FD_SET(data,&writable);
+                        timeval wait{3,0};rc=select(data+1,nullptr,&writable,nullptr,&wait);
+                        int err=0;socklen_t sz=sizeof(err);
+                        if(rc>0&&getsockopt(data,SOL_SOCKET,SO_ERROR,&err,&sz)==0&&err==0)rc=0;
+                        else rc=-1;
+                    }
+                    if(flags>=0)fcntl(data,F_SETFL,flags);
+                    if(rc!=0){close(data);data=-1;}
+                    else{timeval timeout{20,0};setsockopt(data,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout));setsockopt(data,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof(timeout));}
+                }
+            }else data=acceptData(passive, fd);
+            resetPasv();activeMode=false;
+            slot.data=data;
             bool ok = data >= 0;
             if (ok && isListing) {
                 std::string contents = listing(path, op);
                 ok = writeAll(data, contents.data(), contents.size());
+                if(ok){listingsDone++;event("Listagem: " + virtualPath(path));}
             } else if (ok && op == "RETR") {
                 ok = writeFile(data, file);
             } else if (ok && op == "STOR") {
                 ok = receiveFile(data, file);
             }
             if (data >= 0) { shutdown(data, SHUT_RDWR); close(data); }
+            slot.data=-1;
             if (file) {
                 if (op == "STOR" && fflush(file) != 0) ok = false;
                 if (op == "STOR" && fsync(fileno(file)) != 0) ok = false;
@@ -343,17 +420,20 @@ void session(int fd) {
                 if (ok) ok = finalizeUpload(path, temporary);
                 if (!ok) unlink(temporary.c_str());
             }
-            if (ok) { if (!isListing) transfersDone++; reply(fd, 226, "Transfer complete"); }
-            else reply(fd, 426, "Transfer interrupted or failed");
+            if (ok) {
+                if (!isListing) { transfersDone++;event("Transferencia concluida"); }
+                reply(fd, 226, "Transfer complete");
+            } else {event("Erro ao listar ou transferir");reply(fd, 426, "Transfer interrupted or failed");}
             transferBytes = 0;
         } else {
             reply(fd, 502, "Command not supported");
         }
     }
     resetPasv();
+    slot.control=-1;
     shutdown(fd, SHUT_RDWR);
     close(fd);
-    controlSocket = -1;
+    connectedClients--;
 }
 void serve() {
     while (active) {
@@ -362,7 +442,17 @@ void serve() {
         int ready = select(listener + 1, &sockets, nullptr, nullptr, &tv);
         if (ready > 0 && active) {
             int fd = accept(listener, nullptr, nullptr);
-            if (fd >= 0) session(fd);
+            if(fd<0)continue;
+            int freeSlot=-1;
+            for(int i=0;i<MAX_CLIENTS;i++)if(!clients[i].busy.load()){freeSlot=i;break;}
+            if(freeSlot<0){
+                const char* msg="421 Too many clients\r\n";
+                send(fd,msg,strlen(msg),0);close(fd);continue;
+            }
+            ClientSlot& slot=clients[freeSlot];
+            if(slot.thread.joinable())slot.thread.join();
+            slot.busy=true;slot.control=fd;
+            slot.thread=std::thread([fd,freeSlot](){session(fd,freeSlot);clients[freeSlot].busy=false;});
         }
     }
 }
@@ -373,6 +463,9 @@ std::string url() { return address; }
 uint64_t bytesTransferred() { return totalBytes.load(); }
 unsigned filesCompleted() { return transfersDone.load(); }
 uint64_t currentBytes() { return transferBytes.load(); }
+unsigned activeClients(){return connectedClients.load();}
+unsigned directoryListings(){return listingsDone.load();}
+std::string lastActivity(){std::lock_guard<std::mutex> guard(eventLock);return lastEvent;}
 bool start(std::string& error) {
     if (active) return true;
     if (!netReady) {
@@ -413,16 +506,20 @@ bool start(std::string& error) {
         return false;
     }
     address = "ftp://" + std::string(inet_ntoa(local.sin_addr)) + ":" + std::to_string(PORT);
-    transfersDone = 0; totalBytes = 0; transferBytes = 0;
+    transfersDone = 0; totalBytes = 0; transferBytes = 0;listingsDone=0;connectedClients=0;
+    event("Aguardando conexao");
     active = true;
     worker = std::thread(serve);
     return true;
 }
 void stop() {
     active = false;
-    int fd = controlSocket.load();
-    if (fd >= 0) shutdown(fd, SHUT_RDWR);
     if (worker.joinable()) worker.join();
+    for(auto& slot:clients){
+        int fd=slot.control.load();if(fd>=0)shutdown(fd,SHUT_RDWR);
+        fd=slot.data.load();if(fd>=0)shutdown(fd,SHUT_RDWR);
+    }
+    for(auto& slot:clients)if(slot.thread.joinable())slot.thread.join();
     if (listener >= 0) { close(listener); listener = -1; }
     if (netReady) { socketExit(); netReady = false; }
     address.clear();

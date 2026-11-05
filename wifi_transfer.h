@@ -9,4 +9,7 @@ std::string url();
 uint64_t bytesTransferred();
 unsigned filesCompleted();
 uint64_t currentBytes();
+unsigned activeClients();
+unsigned directoryListings();
+std::string lastActivity();
 }
