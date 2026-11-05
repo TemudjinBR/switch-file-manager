@@ -1,86 +1,36 @@
 # Switch File Manager
 
-Gerenciador de arquivos homebrew para Nintendo Switch, incluindo Switch Lite com Atmosphère. Desenvolvido em C++17 com libnx, com interface de dois painéis no estilo Commander.
+Gerenciador de arquivos para Nintendo Switch com Atmosphère. Interface de dois painéis, operações locais, Google Drive e FTP.
 
-## Versão em preparação: v0.10.1 — pré-verificação de downloads do Google Drive
+## Versão v0.10.4 — atualização automática do FTP
 
-**Estado:** v0.7.0, v0.8.0 e v0.9.0 confirmadas em teste pelo proprietário. A v0.8.0 e v0.9.0 foram testadas pelo proprietário. A v0.10.1 aguarda teste.
+- Atualização dos contadores de clientes, listagens, arquivos concluídos e bytes enquanto a janela FTP está aberta.
+- Atualização automática dos dois painéis locais após envio, exclusão, renomeação ou criação de pasta pelo FTP.
+- Preserva o diretório atual: não é necessário sair e entrar novamente para enxergar o arquivo.
+- Versão 0.10.4 no Homebrew Menu.
+- FTP continua em `ftp://IP_DO_SWITCH:2121`, com acesso anônimo ao SD inteiro. Use somente rede confiável e desligue após transferir.
 
-## Funcionalidades disponíveis
+## Histórico
+- v0.1.0: base e compilação.
+- v0.2.0: ícone e interface.
+- v0.3.0: seleção múltipla.
+- v0.4.0: proteção em operações.
+- v0.5.0: verificação em movimentações.
+- v0.6.0: progresso e cancelamento.
+- v0.7.0: tratamento de falhas e parciais.
+- v0.8.0: fila de transferências.
+- v0.9.0: pré-varredura do Google Drive.
+- v0.10.0: Wi-Fi experimental.
+- v0.10.1: correção de endereço.
+- v0.10.2–v0.10.3: servidor FTP e indicadores.
+- v0.10.4: atualização automática de pastas e indicadores FTP.
 
-- Navegação por arquivos e pastas em dois painéis.
-- Copiar, mover, criar pastas, renomear e excluir arquivos.
-- Seleção múltipla: marcar todos, somente arquivos, somente pastas, inverter e limpar.
-- Verificação de cópias locais antes de excluir originais em movimentações.
-- Progresso, contador de arquivos, velocidade média e tempo restante estimado.
-- Cancelamento pelo botão B e tentativa de limpeza de arquivos incompletos.
-- Fila temporária de até 20 tarefas locais, executadas sequencialmente.
-- Google Drive: navegação e transferência herdadas da base; na v0.9.0, pré-varredura recursiva de downloads, contagem de arquivos e interrupção explícita em erros de listagem ou profundidade.
-- Base de ZIP, sujeita a testes específicos.
-- Compilação automatizada no GitHub Actions, gerando `SwitchFileManager.nro`.
-
-## Histórico de versões
-
-| Versão | Implementação | Situação informada |
-| --- | --- | --- |
-| v0.1.0 | Estrutura inicial, Makefile e GitHub Actions | Compilação inicial confirmada |
-| v0.2.0 | Novo ícone e melhorias visuais | Teste confirmado |
-| v0.3.0 | Seleção múltipla avançada | Teste confirmado |
-| v0.4.0 | Proteções em cópia, exclusão e sobrescrita | Teste confirmado |
-| v0.5.0 | Verificação antes de excluir origem em movimentações locais | Teste confirmado |
-| v0.6.0 | Progresso, velocidade, tempo restante e cancelamento | Teste confirmado |
-| v0.7.0 | Segurança de gravação, cancelamento e limpeza de parciais | Teste confirmado |
-| v0.8.0 | Fila de até 20 operações locais | Teste confirmado |
-| v0.9.0 | Pré-varredura de pastas do Drive, contagem de arquivos, checagem de profundidade e erros ao criar diretórios | Teste confirmado |
+As versões até v0.9.0 tiveram testes confirmados pelo proprietário. O FTP foi testado funcionalmente pelo proprietário, que identificou a ausência de atualização visual. A v0.10.4 aguarda compilação e teste.
 
 ## Compilação
 
-O workflow `.github/workflows/build.yml` compila o projeto com devkitA64/libnx. Depois de uma execução bem-sucedida, baixe o artefato `SwitchFileManager.nro` na aba **Actions** do GitHub.
+O Makefile aplica primeiro `apply_ftp_update.py` e depois `apply_live_refresh.py`, antes de compilar o projeto. Mantenha os dois scripts na raiz.
 
-## Limitações atuais
+## Segurança
 
-- A fila v0.8.0 é temporária e limitada inicialmente a operações locais no SD.
-- Operações Google Drive não participam da fila. Autenticação, upload e download ainda exigem testes específicos.
-- Movimentações entre Google Drive e SD permanecem restritas por segurança.
-- USB OTG (FAT/FAT32/exFAT/NTFS), transferência Wi-Fi e instalação NSP/NSZ/XCI ainda não estão implementados ou validados.
-- Teste operações destrutivas somente com arquivos descartáveis; mantenha backups.
-- Nunca envie tokens ou credenciais Google ao repositório.
-
-## Próximas versões planejadas
-
-- **v0.9.0:** melhorias no Google Drive, navegação e downloads de pastas.
-- **v0.10.0:** transferência de arquivos pela rede local com proteção de acesso.
-- **Posteriores:** avaliar USB OTG, formatos de disco, instalação de pacotes e testes de estabilidade.
-
-## Projeto
-
-- Repositório: https://github.com/TemudjinBR/switch-file-manager
-- Idioma: português brasileiro.
-- Plataforma: Nintendo Switch com homebrew compatível.
-
-## v0.10.0 — transferência Wi-Fi local (experimental)
-
-- Menu **X > Ações > Transferência Wi-Fi**: inicia ou interrompe servidor HTTP local na porta 8765.
-- No Android, abrir o endereço exibido no Switch, conectado à mesma rede Wi-Fi.
-- Envio de vários arquivos (um por vez) pelo navegador e download dos arquivos listados.
-- Pasta compartilhada exclusiva: `sdmc:/switch/SwitchFileManager/WiFi`. Não expõe o restante do cartão SD.
-- Código de acesso aleatório incluído no endereço, renovado a cada inicialização; nenhum acesso externo à internet é necessário.
-- Arquivos recebidos usam nome temporário `.sfm-part`, são sincronizados e renomeados após gravação completa.
-- Não sobrescreve arquivos existentes; limite de 1 GiB por upload nesta primeira implementação.
-- **Limitações:** sem criptografia HTTPS, sem barra de progresso no Switch, sem suporte a pastas inteiras, sem retomada, sem transferência em segundo plano ao fechar o aplicativo. Use apenas rede Wi-Fi confiável.
-- **Validação:** código preparado para teste; compilação com devkitA64 e teste físico pendentes.
-
-### Histórico de versões
-
-| Versão | Alteração |
-| --- | --- |
-| v0.10.0 | Servidor Wi-Fi local com envio e download via navegador Android |
-
-## v0.10.1 — correção do acesso Wi-Fi
-
-- O Switch exibe separadamente o endereço curto e o código completo, evitando truncamento.
-- O navegador Android abre uma página de entrada no endereço curto (sem código na URL).
-- Após digitar o código, o navegador abre a página de transferência.
-- A inicialização verifica se conseguiu identificar um IP local válido.
-- O servidor continua limitado à pasta compartilhada e deve ser usado apenas em Wi-Fi confiável (HTTP sem criptografia).
-- v0.8.0 e v0.9.0: testes confirmados pelo proprietário. v0.10.1: teste pendente.
+O FTP atual permite acesso anônimo de leitura e escrita ao cartão SD completo, sem criptografia. Não utilize redes públicas e desligue o servidor após o uso. Não faça testes destrutivos com arquivos importantes.
