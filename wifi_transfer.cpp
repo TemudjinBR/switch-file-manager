@@ -67,7 +67,21 @@ static void client(int fd){
     if(a==std::string::npos||b==std::string::npos){response(fd,400,"text/plain","Requisição inválida");return;}
     std::string method=first.substr(0,a),target=first.substr(a+1,b-a-1);
     size_t q=target.find('?');std::string path=target.substr(0,q),query=q==std::string::npos?"":target.substr(q+1);
-    if(param(query,"key")!=token){response(fd,403,"text/plain","Acesso negado");return;}
+    if(method=="GET"&&path=="/"&&param(query,"key")!=token){
+        const std::string login = "<!doctype html><html lang='pt-br'><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>Switch File Manager - Acesso</title>"
+            "<style>body{font:18px system-ui;background:#111827;color:white;max-width:440px;"
+            "margin:12vh auto;padding:24px}input,button{box-sizing:border-box;width:100%;"
+            "padding:14px;margin:10px 0;border-radius:9px;font-size:17px}"
+            "button{background:#248ad1;color:white;border:0}</style>"
+            "<h2>Switch File Manager</h2><p>Digite o código mostrado no Switch.</p>"
+            "<form method='GET' action='/'><input name='key' aria-label='Código de acesso' "
+            "autocomplete='off' autocapitalize='off' spellcheck='false' required>"
+            "<button type='submit'>Entrar</button></form></html>";
+        response(fd,200,"text/html; charset=utf-8",login);return;
+    }
+    if(param(query,"key")!=token){response(fd,403,"text/plain","Código inválido");return;}
     if(method=="GET"&&path=="/"){
         std::string h="<!doctype html><html lang=pt-br><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Switch File Manager</title><style>body{font:16px system-ui;background:#111827;color:white;max-width:650px;margin:30px auto;padding:16px}button,input{padding:12px;margin:6px}a{color:#8bd4ff}li{padding:8px}#status{white-space:pre-wrap}</style><h2>Switch File Manager — Wi-Fi</h2><p>Arquivos na pasta compartilhada do cartão SD.</p><input type=file id=f multiple><button onclick=upload()>Enviar arquivos</button><p id=status></p><h3>Baixar arquivos</h3><ul>";
         DIR* d=opendir(ROOT);if(d){dirent* e;while((e=readdir(d))){std::string n=e->d_name;if(!validName(n))continue;struct stat st;std::string p=std::string(ROOT)+"/"+n;if(stat(p.c_str(),&st)||!S_ISREG(st.st_mode))continue;h+="<li><a href='/download?key="+token+"&name="+encode(n)+"'>"+htmlEscape(n)+"</a> ("+std::to_string((unsigned long long)st.st_size)+" bytes)</li>";}closedir(d);}
@@ -118,7 +132,20 @@ bool start(std::string& error){
     int one=1;setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));sockaddr_in sa{};sa.sin_family=AF_INET;sa.sin_port=htons(PORT);sa.sin_addr.s_addr=INADDR_ANY;
     if(bind(listener,(sockaddr*)&sa,sizeof(sa))!=0||listen(listener,2)!=0){close(listener);listener=-1;error="Porta 8765 indisponível";return false;}
     unsigned char randomBytes[12];randomGet(randomBytes,sizeof(randomBytes));static const char* hex="0123456789abcdef";token.clear();for(auto b:randomBytes){token+=hex[b>>4];token+=hex[b&15];}
-    int probe=socket(AF_INET,SOCK_DGRAM,0);sockaddr_in remote{};remote.sin_family=AF_INET;remote.sin_port=htons(53);inet_pton(AF_INET,"1.1.1.1",&remote.sin_addr);connect(probe,(sockaddr*)&remote,sizeof(remote));sockaddr_in local{};socklen_t sl=sizeof(local);getsockname(probe,(sockaddr*)&local,&sl);close(probe);
+    int probe=socket(AF_INET,SOCK_DGRAM,0);
+    sockaddr_in local{};
+    bool ipOk=false;
+    if(probe>=0){
+        sockaddr_in remote{};remote.sin_family=AF_INET;remote.sin_port=htons(53);
+        inet_pton(AF_INET,"1.1.1.1",&remote.sin_addr);
+        if(connect(probe,(sockaddr*)&remote,sizeof(remote))==0){
+            socklen_t sl=sizeof(local);
+            ipOk=getsockname(probe,(sockaddr*)&local,&sl)==0 &&
+                local.sin_addr.s_addr!=INADDR_ANY;
+        }
+        close(probe);
+    }
+    if(!ipOk){close(listener);listener=-1;error="Não foi possível identificar o IP local. Verifique o Wi-Fi.";return false;}
     address="http://"+std::string(inet_ntoa(local.sin_addr))+":"+std::to_string(PORT)+"/?key="+token;
     active=true;worker=std::thread(serve);return true;
 }

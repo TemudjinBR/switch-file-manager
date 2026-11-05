@@ -17,7 +17,7 @@ INCLUDES		:=	.
 
 APP_TITLE	:=	Switch File Manager
 APP_AUTHOR	:=	TemudjinBR
-APP_VERSION	:=	0.10.0
+APP_VERSION	:=	0.10.1
 
 
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE

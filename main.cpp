@@ -1874,7 +1874,14 @@ static void wifiMenu() {
         if (!wifi::start(err)) { message("Wi-Fi indisponível", err); return; }
     }
     std::string url = wifi::url();
-    int choice = modal("Transferência Wi-Fi", "No celular, conectado ao mesmo Wi-Fi, abra:\n" + url + "\n\nCódigo de acesso incluído no endereço.\nArquivos ficam em sdmc:/switch/SwitchFileManager/WiFi", {"Manter ativo", "Parar compartilhamento"});
+    size_t keyPos = url.find("/?key=");
+    std::string shortUrl = keyPos == std::string::npos ? url : url.substr(0, keyPos + 1);
+    std::string accessCode = keyPos == std::string::npos ? "indisponível" : url.substr(keyPos + 6);
+    int choice = modal("Transferência Wi-Fi",
+        "1. No celular, abra:\n" + shortUrl +
+        "\n2. Digite o código na página:\n" + accessCode +
+        "\n\nPasta: /switch/SwitchFileManager/WiFi",
+        {"Manter ativo", "Parar compartilhamento"});
     if (choice == 1) wifi::stop();
 }
 

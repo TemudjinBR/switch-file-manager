@@ -2,9 +2,9 @@
 
 Gerenciador de arquivos homebrew para Nintendo Switch, incluindo Switch Lite com Atmosphère. Desenvolvido em C++17 com libnx, com interface de dois painéis no estilo Commander.
 
-## Versão em preparação: v0.10.0 — pré-verificação de downloads do Google Drive
+## Versão em preparação: v0.10.1 — pré-verificação de downloads do Google Drive
 
-**Estado:** v0.7.0 confirmada em teste pelo proprietário. A v0.8.0 ainda não teve confirmação explícita de teste; a v0.9.0 aguarda compilação e teste no Switch Lite.
+**Estado:** v0.7.0, v0.8.0 e v0.9.0 confirmadas em teste pelo proprietário. A v0.8.0 e v0.9.0 foram testadas pelo proprietário. A v0.10.1 aguarda teste.
 
 ## Funcionalidades disponíveis
 
@@ -30,8 +30,8 @@ Gerenciador de arquivos homebrew para Nintendo Switch, incluindo Switch Lite com
 | v0.5.0 | Verificação antes de excluir origem em movimentações locais | Teste confirmado |
 | v0.6.0 | Progresso, velocidade, tempo restante e cancelamento | Teste confirmado |
 | v0.7.0 | Segurança de gravação, cancelamento e limpeza de parciais | Teste confirmado |
-| v0.8.0 | Fila de até 20 operações locais | Teste pendente de confirmação |
-| v0.9.0 | Pré-varredura de pastas do Drive, contagem de arquivos, checagem de profundidade e erros ao criar diretórios | Compilação e teste pendentes |
+| v0.8.0 | Fila de até 20 operações locais | Teste confirmado |
+| v0.9.0 | Pré-varredura de pastas do Drive, contagem de arquivos, checagem de profundidade e erros ao criar diretórios | Teste confirmado |
 
 ## Compilação
 
@@ -75,3 +75,12 @@ O workflow `.github/workflows/build.yml` compila o projeto com devkitA64/libnx. 
 | Versão | Alteração |
 | --- | --- |
 | v0.10.0 | Servidor Wi-Fi local com envio e download via navegador Android |
+
+## v0.10.1 — correção do acesso Wi-Fi
+
+- O Switch exibe separadamente o endereço curto e o código completo, evitando truncamento.
+- O navegador Android abre uma página de entrada no endereço curto (sem código na URL).
+- Após digitar o código, o navegador abre a página de transferência.
+- A inicialização verifica se conseguiu identificar um IP local válido.
+- O servidor continua limitado à pasta compartilhada e deve ser usado apenas em Wi-Fi confiável (HTTP sem criptografia).
+- v0.8.0 e v0.9.0: testes confirmados pelo proprietário. v0.10.1: teste pendente.
