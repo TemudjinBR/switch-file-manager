@@ -6,152 +6,425 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <dirent.h>
 #include <sys/select.h>
+#include <dirent.h>
 #include <errno.h>
 #include <atomic>
 #include <thread>
 #include <string>
+#include <vector>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <cctype>
 #include <algorithm>
+#include <ctime>
 
 namespace wifi {
-static constexpr int PORT=8765;
-static const char* ROOT="sdmc:/switch/SwitchFileManager/WiFi";
-static std::atomic<bool> active{false};
-static int listener=-1;
-static std::thread worker;
-static std::string token, address;
-static bool netReady=false;
-static bool pathExists(const std::string& p){struct stat st;return stat(p.c_str(),&st)==0;}
-static bool sendAll(int fd,const char* p,size_t n) {
-    while(n){ ssize_t k=send(fd,p,n,0); if(k<=0)return false; p+=k;n-=size_t(k); }return true;
-}
-static void response(int fd,int code,const char* type,const std::string& data){
-    std::string h="HTTP/1.1 "+std::to_string(code)+(code==200?" OK":" Error")+"\r\nContent-Type: "+type+"\r\nContent-Length: "+std::to_string(data.size())+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
-    sendAll(fd,h.data(),h.size());sendAll(fd,data.data(),data.size());
-}
-static std::string encode(const std::string& s){
-    const char* hex="0123456789ABCDEF";std::string o;
-    for(unsigned char c:s){if(std::isalnum(c)||c=='-'||c=='_'||c=='.')o+=char(c);else{o+='%';o+=hex[c>>4];o+=hex[c&15];}}return o;
-}
-static std::string decode(const std::string& s){
-    std::string o;
-    for(size_t i=0;i<s.size();++i){if(s[i]=='%'&&i+2<s.size()&&std::isxdigit((unsigned char)s[i+1])&&std::isxdigit((unsigned char)s[i+2])){
-        char v[3]={s[i+1],s[i+2],0};o+=char(strtol(v,nullptr,16));i+=2;
-    }else if(s[i]=='+')o+=' ';else o+=s[i];}return o;
-}
-static bool validName(const std::string& n){
-    if(n.empty()||n.size()>180||n=="."||n==".."||n[0]=='.')return false;
-    for(unsigned char c:n)if(c=='/'||c=='\\'||c==':'||c<32||c==127)return false;
-    return true;
-}
-static std::string param(const std::string& query,const std::string& key){
-    std::string needle=key+"=";size_t pos=0;
-    while(pos<query.size()){size_t end=query.find('&',pos);if(end==std::string::npos)end=query.size();
-        if(query.compare(pos,needle.size(),needle)==0)return decode(query.substr(pos+needle.size(),end-pos-needle.size()));pos=end+1;}
-    return "";
-}
-static std::string htmlEscape(const std::string& s){
-    std::string o;for(char c:s){switch(c){case '&':o+="&amp;";break;case '<':o+="&lt;";break;case '>':o+="&gt;";break;case '"':o+="&quot;";break;case '\'':o+="&#39;";break;default:o+=c;}}return o;
-}
-static void client(int fd){
-    timeval tv{15,0};setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&tv,sizeof(tv));
-    std::string req;char buf[16384];size_t headerEnd=std::string::npos;
-    while(req.size()<32768){ssize_t n=recv(fd,buf,sizeof(buf),0);if(n<=0)return;req.append(buf,size_t(n));headerEnd=req.find("\r\n\r\n");if(headerEnd!=std::string::npos)break;}
-    if(headerEnd==std::string::npos){response(fd,400,"text/plain","Cabeçalho inválido");return;}
-    size_t lineEnd=req.find("\r\n");std::string first=req.substr(0,lineEnd);size_t a=first.find(' '),b=first.find(' ',a+1);
-    if(a==std::string::npos||b==std::string::npos){response(fd,400,"text/plain","Requisição inválida");return;}
-    std::string method=first.substr(0,a),target=first.substr(a+1,b-a-1);
-    size_t q=target.find('?');std::string path=target.substr(0,q),query=q==std::string::npos?"":target.substr(q+1);
-    if(method=="GET"&&path=="/"&&param(query,"key")!=token){
-        const std::string login = "<!doctype html><html lang='pt-br'><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<title>Switch File Manager - Acesso</title>"
-            "<style>body{font:18px system-ui;background:#111827;color:white;max-width:440px;"
-            "margin:12vh auto;padding:24px}input,button{box-sizing:border-box;width:100%;"
-            "padding:14px;margin:10px 0;border-radius:9px;font-size:17px}"
-            "button{background:#248ad1;color:white;border:0}</style>"
-            "<h2>Switch File Manager</h2><p>Digite o código mostrado no Switch.</p>"
-            "<form method='GET' action='/'><input name='key' aria-label='Código de acesso' "
-            "autocomplete='off' autocapitalize='off' spellcheck='false' required>"
-            "<button type='submit'>Entrar</button></form></html>";
-        response(fd,200,"text/html; charset=utf-8",login);return;
+namespace {
+constexpr int PORT = 2121;
+const std::string ROOT = "sdmc:/";
+std::atomic<bool> active{false};
+std::atomic<uint64_t> totalBytes{0}, transferBytes{0};
+std::atomic<unsigned> transfersDone{0};
+std::atomic<int> controlSocket{-1};
+int listener = -1;
+std::thread worker;
+bool netReady = false;
+std::string address;
+
+bool writeAll(int fd, const char* p, size_t n) {
+    while (n && active) {
+        ssize_t k = send(fd, p, n, 0);
+        if (k < 0 && errno == EINTR) continue;
+        if (k <= 0) return false;
+        p += k; n -= size_t(k);
     }
-    if(param(query,"key")!=token){response(fd,403,"text/plain","Código inválido");return;}
-    if(method=="GET"&&path=="/"){
-        std::string h="<!doctype html><html lang=pt-br><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Switch File Manager</title><style>body{font:16px system-ui;background:#111827;color:white;max-width:650px;margin:30px auto;padding:16px}button,input{padding:12px;margin:6px}a{color:#8bd4ff}li{padding:8px}#status{white-space:pre-wrap}</style><h2>Switch File Manager — Wi-Fi</h2><p>Arquivos na pasta compartilhada do cartão SD.</p><input type=file id=f multiple><button onclick=upload()>Enviar arquivos</button><p id=status></p><h3>Baixar arquivos</h3><ul>";
-        DIR* d=opendir(ROOT);if(d){dirent* e;while((e=readdir(d))){std::string n=e->d_name;if(!validName(n))continue;struct stat st;std::string p=std::string(ROOT)+"/"+n;if(stat(p.c_str(),&st)||!S_ISREG(st.st_mode))continue;h+="<li><a href='/download?key="+token+"&name="+encode(n)+"'>"+htmlEscape(n)+"</a> ("+std::to_string((unsigned long long)st.st_size)+" bytes)</li>";}closedir(d);}
-        h+="</ul><script>const key='"+token+"';async function upload(){const files=document.getElementById('f').files,st=document.getElementById('status');for(const f of files){st.textContent='Enviando '+f.name;try{const r=await fetch('/upload?key='+key+'&name='+encodeURIComponent(f.name),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f});if(!r.ok)throw Error(await r.text());st.textContent+=' — concluído';}catch(e){st.textContent+=' — erro: '+e.message;return}}location.reload()}</script></html>";
-        response(fd,200,"text/html; charset=utf-8",h);return;
-    }
-    std::string name=param(query,"name");if(!validName(name)){response(fd,400,"text/plain","Nome de arquivo inválido");return;}
-    std::string dest=std::string(ROOT)+"/"+name;
-    if(method=="GET"&&path=="/download"){
-        struct stat st;if(stat(dest.c_str(),&st)||!S_ISREG(st.st_mode)){response(fd,404,"text/plain","Arquivo não encontrado");return;}
-        FILE* f=fopen(dest.c_str(),"rb");if(!f){response(fd,500,"text/plain","Erro de leitura");return;}
-        std::string h="HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename*=UTF-8''"+encode(name)+"\r\nContent-Length: "+std::to_string((unsigned long long)st.st_size)+"\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
-        bool ok=sendAll(fd,h.data(),h.size());size_t n;while(ok&&(n=fread(buf,1,sizeof(buf),f))>0)ok=sendAll(fd,buf,n);fclose(f);return;
-    }
-    if(method=="POST"&&path=="/upload"){
-        if(pathExists(dest)){response(fd,409,"text/plain","Já existe arquivo com esse nome");return;}
-        size_t p=req.find("\r\nContent-Length:");if(p==std::string::npos){ // case-insensitive header scan
-            std::string hdr=req.substr(0,headerEnd);std::transform(hdr.begin(),hdr.end(),hdr.begin(),[](unsigned char c){return std::tolower(c);});p=hdr.find("\r\ncontent-length:");
+    return n == 0;
+}
+void reply(int fd, int code, const std::string& msg) {
+    std::string s = std::to_string(code) + " " + msg + "\r\n";
+    writeAll(fd, s.data(), s.size());
+}
+std::string joined(const std::string& dir, const std::string& file) {
+    return dir + (dir.back() == '/' ? "" : "/") + file;
+}
+bool resolve(const std::string& cwd, const std::string& arg, std::string& out) {
+    std::string logical = arg.empty() ? cwd.substr(5) :
+        (arg[0] == '/' ? arg : cwd.substr(5) + (cwd == ROOT ? "" : "/") + arg);
+    std::vector<std::string> names;
+    std::string name;
+    logical += "/";
+    for (unsigned char c : logical) {
+        if (c == '/') {
+            if (name == "..") { if (!names.empty()) names.pop_back(); }
+            else if (!name.empty() && name != ".") names.push_back(name);
+            name.clear();
+        } else {
+            if (c == '\\' || c == ':' || c < 32 || c == 127) return false;
+            name += char(c);
+            if (name.size() > 255) return false;
         }
-        if(p==std::string::npos){response(fd,411,"text/plain","Content-Length obrigatório");return;}
-        p=req.find(':',p)+1;size_t end=req.find("\r\n",p);std::string len=req.substr(p,end-p);
-        char* tail=nullptr;unsigned long long total=strtoull(len.c_str(),&tail,10);
-        if(total>1024ULL*1024*1024||total==0||tail==len.c_str()||(*tail && !std::isspace((unsigned char)*tail))){response(fd,413,"text/plain","Tamanho inválido ou maior que 1 GB");return;}
-        std::string part=dest+".sfm-part";
-        int out=open(part.c_str(),O_WRONLY|O_CREAT|O_EXCL,0600);if(out<0){response(fd,409,"text/plain","Destino ocupado");return;}
-        size_t received=req.size()-(headerEnd+4);bool ok=received<=total;
-        if(ok&&received)ok=write(out,req.data()+headerEnd+4,received)==(ssize_t)received;
-        unsigned long long remaining=total-received;
-        while(ok&&remaining&&active){ssize_t n=recv(fd,buf,(size_t)std::min<unsigned long long>(sizeof(buf),remaining),0);if(n<=0){ok=false;break;}ok=write(out,buf,(size_t)n)==n;remaining-=n;}
-        if(fsync(out)!=0)ok=false;if(close(out)!=0)ok=false;
-        if(ok&&remaining==0&&!pathExists(dest)&&rename(part.c_str(),dest.c_str())==0){response(fd,200,"text/plain","Enviado");return;}
-        unlink(part.c_str());response(fd,500,"text/plain","Envio incompleto ou falha de gravação");return;
     }
-    response(fd,404,"text/plain","Rota inexistente");
+    out = ROOT;
+    for (size_t i = 0; i < names.size(); i++) {
+        if (i) out += "/";
+        out += names[i];
+    }
+    return out.size() < 1024;
 }
-static void serve(){
-    while(active){fd_set set;FD_ZERO(&set);FD_SET(listener,&set);timeval t{0,200000};int ready=select(listener+1,&set,nullptr,nullptr,&t);
-        if(ready>0){int fd=accept(listener,nullptr,nullptr);if(fd>=0){client(fd);close(fd);}}
+std::string virtualPath(const std::string& real) {
+    return real == ROOT ? "/" : "/" + real.substr(ROOT.size());
+}
+bool exists(const std::string& p) { struct stat st; return stat(p.c_str(), &st) == 0; }
+bool isDir(const std::string& p) {
+    struct stat st; return stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+bool isRegular(const std::string& p) {
+    struct stat st; return stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+bool parentExists(const std::string& p) {
+    if (p == ROOT) return false;
+    size_t slash = p.find_last_of('/');
+    return slash != std::string::npos && isDir(p.substr(0, slash + 1));
+}
+std::string stamp(time_t timestamp) {
+    struct tm tmval{};
+    gmtime_r(&timestamp, &tmval);
+    char b[24]; strftime(b, sizeof(b), "%Y%m%d%H%M%S", &tmval);
+    return b;
+}
+std::string listing(const std::string& dir, const std::string& kind) {
+    std::string result;
+    DIR* dp = opendir(dir.c_str());
+    if (!dp) return result;
+    dirent* ent;
+    while ((ent = readdir(dp))) {
+        std::string name(ent->d_name);
+        if (name == "." || name == "..") continue;
+        std::string full = joined(dir, name);
+        struct stat st{};
+        if (stat(full.c_str(), &st) != 0) continue;
+        if (kind == "NLST") { result += name + "\r\n"; continue; }
+        if (kind == "MLSD") {
+            result += std::string("type=") + (S_ISDIR(st.st_mode) ? "dir" : "file") +
+                ";size=" + std::to_string((unsigned long long)st.st_size) +
+                ";modify=" + stamp(st.st_mtime) + "; " + name + "\r\n";
+        } else {
+            struct tm tmval{}; localtime_r(&st.st_mtime, &tmval);
+            char ts[24]; strftime(ts, sizeof(ts), "%b %d %H:%M", &tmval);
+            result += std::string(S_ISDIR(st.st_mode) ? "drwxr-xr-x" : "-rw-r--r--") +
+                " 1 owner group " + std::to_string((unsigned long long)st.st_size) +
+                " " + ts + " " + name + "\r\n";
+        }
+    }
+    closedir(dp);
+    return result;
+}
+// File transfers and the listener are interruptible by the UI Stop button.
+int passiveListener() {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    int yes = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = 0;
+    if (bind(fd, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(fd, 1) != 0) {
+        close(fd); return -1;
+    }
+    return fd;
+}
+int acceptData(int passive, int control) {
+    // 15s deadline while checking the stop request every 200ms.
+    for (int i = 0; i < 75 && active; ++i) {
+        fd_set readset; FD_ZERO(&readset); FD_SET(passive, &readset);
+        timeval tv{0, 200000};
+        int n = select(passive + 1, &readset, nullptr, nullptr, &tv);
+        if (n < 0 && errno != EINTR) break;
+        if (n <= 0) continue;
+        sockaddr_in remote{}; socklen_t len = sizeof(remote);
+        int data = accept(passive, (sockaddr*)&remote, &len);
+        if (data < 0) return -1;
+        sockaddr_in ctrlPeer{}; len = sizeof(ctrlPeer);
+        if (getpeername(control, (sockaddr*)&ctrlPeer, &len) != 0 ||
+            ctrlPeer.sin_addr.s_addr != remote.sin_addr.s_addr) {
+            close(data); continue;
+        }
+        timeval timeout{2, 0};
+        setsockopt(data, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        setsockopt(data, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+        return data;
+    }
+    return -1;
+}
+bool readLine(int fd, std::string& result) {
+    result.clear();
+    while (active && result.size() < 2048) {
+        fd_set readset; FD_ZERO(&readset); FD_SET(fd, &readset);
+        timeval t{0, 200000};
+        int ready = select(fd + 1, &readset, nullptr, nullptr, &t);
+        if (ready == 0 || (ready < 0 && errno == EINTR)) continue;
+        if (ready < 0) return false;
+        char c;
+        ssize_t got = recv(fd, &c, 1, 0);
+        if (got <= 0) return false;
+        if (c == '\n') return true;
+        if (c != '\r') result += c;
+    }
+    return false;
+}
+bool writeFile(int fd, FILE* file) {
+    char buf[32768];
+    size_t size;
+    while (active && (size = fread(buf, 1, sizeof(buf), file)) != 0) {
+        if (!writeAll(fd, buf, size)) return false;
+        totalBytes += size;
+        transferBytes += size;
+    }
+    return active && !ferror(file);
+}
+bool receiveFile(int fd, FILE* file) {
+    char buf[32768];
+    for (;;) {
+        if (!active) return false;
+        ssize_t count = recv(fd, buf, sizeof(buf), 0);
+        if (count == 0) return true;
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0) return false;
+        size_t remaining = (size_t)count, index = 0;
+        while (remaining) {
+            size_t n = fwrite(buf + index, 1, remaining, file);
+            if (!n) return false;
+            remaining -= n; index += n;
+        }
+        totalBytes += (unsigned long long)count;
+        transferBytes += (unsigned long long)count;
     }
 }
-bool running(){return active.load();}
-std::string url(){return address;}
-bool start(std::string& error){
-    if(active)return true;
-    if(!netReady){Result r=socketInitializeDefault();if(R_FAILED(r)){error="Falha ao inicializar a rede";return false;}netReady=true;}
-    mkdir("sdmc:/switch/SwitchFileManager",0777);mkdir(ROOT,0777);
-    listener=socket(AF_INET,SOCK_STREAM,0);if(listener<0){error="Não foi possível abrir o servidor";return false;}
-    int one=1;setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));sockaddr_in sa{};sa.sin_family=AF_INET;sa.sin_port=htons(PORT);sa.sin_addr.s_addr=INADDR_ANY;
-    if(bind(listener,(sockaddr*)&sa,sizeof(sa))!=0||listen(listener,2)!=0){close(listener);listener=-1;error="Porta 8765 indisponível";return false;}
-    unsigned char randomBytes[12];randomGet(randomBytes,sizeof(randomBytes));static const char* hex="0123456789abcdef";token.clear();for(auto b:randomBytes){token+=hex[b>>4];token+=hex[b&15];}
-    int probe=socket(AF_INET,SOCK_DGRAM,0);
+bool finalizeUpload(const std::string& dest, const std::string& part) {
+    if (!exists(dest)) return rename(part.c_str(), dest.c_str()) == 0;
+    if (!isRegular(dest)) return false;
+    std::string backup = dest + ".sfm-backup";
+    if (exists(backup) || rename(dest.c_str(), backup.c_str()) != 0) return false;
+    if (rename(part.c_str(), dest.c_str()) == 0) {
+        unlink(backup.c_str());
+        return true;
+    }
+    rename(backup.c_str(), dest.c_str());
+    return false;
+}
+void session(int fd) {
+    controlSocket = fd;
+    reply(fd, 220, "Switch File Manager FTP ready");
+    std::string cwd = ROOT, pendingRename, cmd;
+    int passive = -1;
+    uint64_t restartAt = 0;
+    auto resetPasv = [&]() { if (passive >= 0) { close(passive); passive = -1; } };
+    while (active && readLine(fd, cmd)) {
+        size_t space = cmd.find(' ');
+        std::string op = cmd.substr(0, space);
+        std::transform(op.begin(), op.end(), op.begin(), [](unsigned char c) { return (char)std::toupper(c); });
+        std::string arg = space == std::string::npos ? "" : cmd.substr(space + 1);
+        if (op == "USER" || op == "PASS") { reply(fd, 230, "Anonymous access granted"); continue; }
+        if (op == "QUIT") { reply(fd, 221, "Goodbye"); break; }
+        if (op == "NOOP") { reply(fd, 200, "OK"); continue; }
+        if (op == "SYST") { reply(fd, 215, "UNIX Type: L8"); continue; }
+        if (op == "FEAT") {
+            const std::string feat = "211-Features:\r\n UTF8\r\n EPSV\r\n PASV\r\n SIZE\r\n MDTM\r\n MLSD\r\n REST STREAM\r\n211 End\r\n";
+            writeAll(fd, feat.data(), feat.size()); continue;
+        }
+        if (op == "OPTS" || op == "TYPE" || op == "MODE" || op == "STRU" || op == "ALLO") {
+            reply(fd, 200, "OK"); continue;
+        }
+        if (op == "PWD" || op == "XPWD") { reply(fd, 257, "\"" + virtualPath(cwd) + "\""); continue; }
+        if (op == "REST") {
+            if (arg.empty() || arg.find_first_not_of("0123456789") != std::string::npos) {
+                reply(fd, 501, "Invalid offset"); continue;
+            }
+            char* end = nullptr;
+            unsigned long long value = strtoull(arg.c_str(), &end, 10);
+            if (!end || *end) { reply(fd, 501, "Invalid offset"); continue; }
+            restartAt = value;
+            reply(fd, 350, "Restart position accepted"); continue;
+        }
+        if (op == "STAT") { reply(fd, 211, "FTP active; transfers: " + std::to_string(transfersDone.load())); continue; }
+        if (op == "PASV" || op == "EPSV") {
+            resetPasv();
+            passive = passiveListener();
+            if (passive < 0) { reply(fd, 425, "Cannot open data port"); continue; }
+            sockaddr_in a{}; socklen_t len = sizeof(a);
+            getsockname(passive, (sockaddr*)&a, &len);
+            unsigned port = ntohs(a.sin_port);
+            if (op == "EPSV") reply(fd, 229, "Entering Extended Passive Mode (|||" + std::to_string(port) + "|)");
+            else {
+                sockaddr_in local{}; len = sizeof(local);
+                if (getsockname(fd, (sockaddr*)&local, &len) != 0) { resetPasv(); reply(fd, 425, "IP detection failed"); continue; }
+                const auto* p = reinterpret_cast<const unsigned char*>(&local.sin_addr.s_addr);
+                reply(fd, 227, "Entering Passive Mode (" + std::to_string(p[0]) + "," + std::to_string(p[1]) + "," + std::to_string(p[2]) + "," + std::to_string(p[3]) + "," + std::to_string(port / 256) + "," + std::to_string(port % 256) + ")");
+            }
+            continue;
+        }
+        if (op == "PORT" || op == "EPRT") { reply(fd, 502, "Use passive FTP"); continue; }
+        if (op == "ABOR") { resetPasv(); reply(fd, 226, "Aborted"); continue; }
+        if (op == "CDUP" || op == "XCUP") arg = "..";
+        if (op == "LIST" && !arg.empty() && arg[0] == '-') arg.clear();
+        std::string path;
+        if (!resolve(cwd, arg, path)) { reply(fd, 550, "Invalid path"); continue; }
+        if (op == "CWD" || op == "XCWD" || op == "CDUP" || op == "XCUP") {
+            if (isDir(path)) { cwd = path; reply(fd, 250, "Directory changed"); }
+            else reply(fd, 550, "Directory not found");
+        } else if (op == "SIZE") {
+            struct stat st{};
+            if (stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) reply(fd, 213, std::to_string((unsigned long long)st.st_size));
+            else reply(fd, 550, "Not a file");
+        } else if (op == "MDTM") {
+            struct stat st{};
+            if (stat(path.c_str(), &st) == 0) reply(fd, 213, stamp(st.st_mtime));
+            else reply(fd, 550, "Not found");
+        } else if (op == "MKD" || op == "XMKD") {
+            if (path != ROOT && parentExists(path) && mkdir(path.c_str(), 0777) == 0) reply(fd, 257, "\"" + virtualPath(path) + "\" created");
+            else reply(fd, 550, "Create failed");
+        } else if (op == "RMD" || op == "XRMD") {
+            if (path != ROOT && rmdir(path.c_str()) == 0) reply(fd, 250, "Directory removed");
+            else reply(fd, 550, "Remove failed");
+        } else if (op == "DELE") {
+            if (path != ROOT && isRegular(path) && unlink(path.c_str()) == 0) reply(fd, 250, "File deleted");
+            else reply(fd, 550, "Delete failed");
+        } else if (op == "RNFR") {
+            if (path != ROOT && exists(path)) { pendingRename = path; reply(fd, 350, "Ready for RNTO"); }
+            else reply(fd, 550, "Not found");
+        } else if (op == "RNTO") {
+            if (!pendingRename.empty() && path != ROOT && !exists(path) && parentExists(path) && rename(pendingRename.c_str(), path.c_str()) == 0) reply(fd, 250, "Renamed");
+            else reply(fd, 550, "Rename failed");
+            pendingRename.clear();
+        } else if (op == "LIST" || op == "NLST" || op == "MLSD" || op == "RETR" || op == "STOR") {
+            if (passive < 0) { reply(fd, 425, "Use passive mode first"); continue; }
+            bool isListing = op == "LIST" || op == "NLST" || op == "MLSD";
+            if ((isListing && !isDir(path)) || (op == "RETR" && !isRegular(path)) ||
+                (op == "STOR" && (path == ROOT || !parentExists(path) || (exists(path) && !isRegular(path))))) {
+                resetPasv(); reply(fd, 550, "Unavailable path"); continue;
+            }
+            FILE* file = nullptr;
+            std::string temporary;
+            if (op == "RETR") {
+                file = fopen(path.c_str(), "rb");
+                if (file && restartAt && fseeko(file, (off_t)restartAt, SEEK_SET) != 0) { fclose(file); file = nullptr; }
+            } else if (op == "STOR") {
+                if (restartAt) { resetPasv(); reply(fd, 502, "Upload resume not supported"); restartAt = 0; continue; }
+                temporary = path + ".sfm-part";
+                int out = open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+                if (out >= 0) file = fdopen(out, "wb");
+                if (out >= 0 && !file) close(out);
+            }
+            restartAt = 0;
+            if (!isListing && !file) { resetPasv(); reply(fd, 550, "Cannot open file"); continue; }
+            transferBytes = 0;
+            reply(fd, 150, "Opening passive data connection");
+            int data = acceptData(passive, fd);
+            resetPasv();
+            bool ok = data >= 0;
+            if (ok && isListing) {
+                std::string contents = listing(path, op);
+                ok = writeAll(data, contents.data(), contents.size());
+            } else if (ok && op == "RETR") {
+                ok = writeFile(data, file);
+            } else if (ok && op == "STOR") {
+                ok = receiveFile(data, file);
+            }
+            if (data >= 0) { shutdown(data, SHUT_RDWR); close(data); }
+            if (file) {
+                if (op == "STOR" && fflush(file) != 0) ok = false;
+                if (op == "STOR" && fsync(fileno(file)) != 0) ok = false;
+                if (fclose(file) != 0) ok = false;
+            }
+            if (op == "STOR") {
+                if (ok) ok = finalizeUpload(path, temporary);
+                if (!ok) unlink(temporary.c_str());
+            }
+            if (ok) { if (!isListing) transfersDone++; reply(fd, 226, "Transfer complete"); }
+            else reply(fd, 426, "Transfer interrupted or failed");
+            transferBytes = 0;
+        } else {
+            reply(fd, 502, "Command not supported");
+        }
+    }
+    resetPasv();
+    shutdown(fd, SHUT_RDWR);
+    close(fd);
+    controlSocket = -1;
+}
+void serve() {
+    while (active) {
+        fd_set sockets; FD_ZERO(&sockets); FD_SET(listener, &sockets);
+        timeval tv{0, 200000};
+        int ready = select(listener + 1, &sockets, nullptr, nullptr, &tv);
+        if (ready > 0 && active) {
+            int fd = accept(listener, nullptr, nullptr);
+            if (fd >= 0) session(fd);
+        }
+    }
+}
+} // anonymous namespace
+
+bool running() { return active.load(); }
+std::string url() { return address; }
+uint64_t bytesTransferred() { return totalBytes.load(); }
+unsigned filesCompleted() { return transfersDone.load(); }
+uint64_t currentBytes() { return transferBytes.load(); }
+bool start(std::string& error) {
+    if (active) return true;
+    if (!netReady) {
+        Result status = socketInitializeDefault();
+        if (R_FAILED(status)) { error = "Falha ao inicializar a rede"; return false; }
+        netReady = true;
+    }
+    listener = socket(AF_INET, SOCK_STREAM, 0);
+    if (listener < 0) { error = "Falha ao criar o socket FTP"; socketExit(); netReady = false; return false; }
+    int yes = 1; setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(PORT);
+    if (bind(listener, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(listener, 4) != 0) {
+        close(listener); listener = -1;
+        error = "Porta FTP 2121 indisponivel";
+        socketExit(); netReady = false; return false;
+    }
+    int probe = socket(AF_INET, SOCK_DGRAM, 0);
     sockaddr_in local{};
-    bool ipOk=false;
-    if(probe>=0){
-        sockaddr_in remote{};remote.sin_family=AF_INET;remote.sin_port=htons(53);
-        inet_pton(AF_INET,"1.1.1.1",&remote.sin_addr);
-        if(connect(probe,(sockaddr*)&remote,sizeof(remote))==0){
-            socklen_t sl=sizeof(local);
-            ipOk=getsockname(probe,(sockaddr*)&local,&sl)==0 &&
-                local.sin_addr.s_addr!=INADDR_ANY;
+    bool ipOK = false;
+    if (probe >= 0) {
+        sockaddr_in remote{};
+        remote.sin_family = AF_INET;
+        remote.sin_port = htons(53);
+        inet_pton(AF_INET, "1.1.1.1", &remote.sin_addr);
+        if (connect(probe, (sockaddr*)&remote, sizeof(remote)) == 0) {
+            socklen_t size = sizeof(local);
+            ipOK = getsockname(probe, (sockaddr*)&local, &size) == 0 && local.sin_addr.s_addr != INADDR_ANY;
         }
         close(probe);
     }
-    if(!ipOk){close(listener);listener=-1;error="Não foi possível identificar o IP local. Verifique o Wi-Fi.";return false;}
-    address="http://"+std::string(inet_ntoa(local.sin_addr))+":"+std::to_string(PORT)+"/?key="+token;
-    active=true;worker=std::thread(serve);return true;
+    if (!ipOK) {
+        close(listener); listener = -1;
+        socketExit(); netReady = false;
+        error = "Nao foi possivel detectar o IP do Wi-Fi";
+        return false;
+    }
+    address = "ftp://" + std::string(inet_ntoa(local.sin_addr)) + ":" + std::to_string(PORT);
+    transfersDone = 0; totalBytes = 0; transferBytes = 0;
+    active = true;
+    worker = std::thread(serve);
+    return true;
 }
-void stop(){
-    if(active){active=false;if(worker.joinable())worker.join();}
-    if(listener>=0){close(listener);listener=-1;}
-    if(netReady){socketExit();netReady=false;}
+void stop() {
+    active = false;
+    int fd = controlSocket.load();
+    if (fd >= 0) shutdown(fd, SHUT_RDWR);
+    if (worker.joinable()) worker.join();
+    if (listener >= 0) { close(listener); listener = -1; }
+    if (netReady) { socketExit(); netReady = false; }
+    address.clear();
 }
-}
+} // namespace wifi

@@ -17,8 +17,7 @@ INCLUDES		:=	.
 
 APP_TITLE	:=	Switch File Manager
 APP_AUTHOR	:=	TemudjinBR
-APP_VERSION	:=	0.10.1
-
+APP_VERSION	:=	0.10.2
 
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
@@ -67,6 +66,7 @@ export NROFLAGS += --icon=$(APP_ICON) --nacp=$(CURDIR)/$(TARGET).nacp
 all: $(BUILD)
 
 $(BUILD):
+	@python3 $(CURDIR)/apply_ftp_update.py
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
