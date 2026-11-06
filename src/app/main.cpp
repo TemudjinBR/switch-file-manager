@@ -30,6 +30,7 @@
 #include "ui/renderer.h"
 #include "ui/context_actions.h"
 #include "ui/pix_qr.h"
+#include "ui/official_icon.h"
 using namespace sfm::paths;
 using namespace sfm::storage;
 using namespace sfm::security;
@@ -1931,6 +1932,7 @@ static void organizationMenu() {
 static int qrHexNibble(char ch) {
     if (ch >= '0' && ch <= '9') return ch - '0';
     if (ch >= 'A' && ch <= 'F') return 10 + (ch - 'A');
+    if (ch >= 'a' && ch <= 'f') return 10 + (ch - 'a');
     return 0;
 }
 static void drawDonationQr(int x, int y, int scale) {
@@ -1944,6 +1946,28 @@ static void drawDonationQr(int x, int y, int scale) {
             if ((nibble >> (3 - column % 4)) & 1)
                 fillRect(x + (column + border) * scale, y + (row + border) * scale,
                          scale, scale, Col{0, 0, 0, 255});
+        }
+    }
+}
+static void drawOfficialIcon(int x, int y, int scale) {
+    // Reproduz a miniatura da arte oficial existente no assets/icon.jpg.
+    // Os pixels são cores reais da arte, sem busca em rede.
+    constexpr int n = sfm::ui::brand::kIconSize;
+    const char* alphabet = sfm::ui::brand::kAlphabet;
+    const char* palette = sfm::ui::brand::kPaletteHex;
+    for (int row = 0; row < n; ++row) {
+        for (int column = 0; column < n; ++column) {
+            const char* colorIndex = std::strchr(alphabet, sfm::ui::brand::kRows[row][column]);
+            if (!colorIndex) continue;
+            int index = (int)(colorIndex - alphabet);
+            const char* value = palette + index * 6;
+            auto component = [&](int offset) -> uint8_t {
+                int hi = qrHexNibble(value[offset]);
+                int lo = qrHexNibble(value[offset + 1]);
+                return (uint8_t)((hi << 4) | lo);
+            };
+            fillRect(x + column * scale, y + row * scale, scale, scale,
+                Col{component(0), component(2), component(4), 255});
         }
     }
 }
@@ -1973,7 +1997,8 @@ static void aboutScreen() {
         drawText(fS, "o projeto ativo e incentiva novas melhorias.", 112, 481, C_TXT);
         drawText(fS, "O aplicativo continua gratuito.", 112, 536, C_GRN);
         drawText(fS, "Obrigado por apoiar o Switch File Manager!", 112, 577, C_DIM);
-        drawDonationQr(803, 187, 5);
+        drawOfficialIcon(884, 42, 3);
+        drawDonationQr(803, 194, 5);
         drawText(fS, "Escaneie e escolha o valor", 955, 513, C_TXT, 320, 2);
         drawText(fS, "de sua contribuição.", 955, 544, C_TXT, 320, 2);
         drawText(fS, "Beneficiário: Flavio Hessnauer Filho", 955, 582, C_DIM, 370, 2);
