@@ -56,32 +56,31 @@ class DocumentationTests(unittest.TestCase):
         inventory = (ROOT / 'docs/FUNCIONALIDADES.md').read_text()
         context = (ROOT / 'docs/MENU_CONTEXTUAL.md').read_text()
 
-        # Novo menu: categorias somente sem seleção; ações em função do contexto.
+        # Categorias gerais apenas quando não há seleção explícita.
         self.assertIn('contextualCommands(state)', code)
         self.assertIn('static void actionsMenu()', code)
         block = code[code.index('static void actionsMenu()'):]
-        initializer = re.search(r'const std::vector<std::string>\\s+sections\\s*=\\s*\\{(.*?)\\};', block, re.S)
+        initializer = re.search(r'const std::vector<std::string>\s+sections\s*=\s*\{(.*?)\};', block, re.S)
         self.assertIsNotNone(initializer)
-        categories = re.findall(r'"([^"\\\\]+)"', initializer[1])
+        categories = re.findall(r'"([^"\\]+)"', initializer[1])
         self.assertEqual(categories, ['Arquivos e pastas', 'Transferências', 'Organização', 'Sistema'])
         self.assertNotIn('Ferramentas', categories)
         for category in categories:
             self.assertIn(category, context)
 
-        # As funcionalidades antigas não foram excluídas; atalhos avançados
-        # permanecem acessíveis, com as opções documentadas.
+        # Opções existentes de seleção avançada, ordenação e fila não somem.
         for function, variable in [('selectionMenu', 'opts'),
                                    ('sortMenu', 'o'), ('transferQueueMenu', 'options')]:
             block = code[code.index('static void ' + function + '('):]
             initializer = re.search(
-                r'(?:const )?std::vector<std::string>\\s+' + variable + r'\\s*=\\s*\\{(.*?)\\};',
+                r'(?:const )?std::vector<std::string>\s+' + variable + r'\s*=\s*\{(.*?)\};',
                 block, re.S)
             self.assertIsNotNone(initializer, function)
-            for option in re.findall(r'"([^"\\\\]+)"', initializer[1]):
+            for option in re.findall(r'"([^"\\]+)"', initializer[1]):
                 with self.subTest(function=function, option=option):
                     self.assertIn(option, inventory)
 
-        # ZIP saiu do menu geral; continua disponível como operação contextual.
+        # ZIP não é mais uma categoria do menu geral.
         self.assertNotIn('static void zipMenu()', code)
         for option in ('Compactar em ZIP', 'Extrair ZIP'):
             self.assertIn(option, code)
