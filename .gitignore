@@ -1,0 +1,34 @@
+/build/
+/dist/
+/work/
+*.elf
+*.nacp
+*.nro
+*.nro.sha256
+__pycache__/
+*.pyc
+# Dados de usuário nunca pertencem ao repositório.
+google.json
+client_secret*.json
+token.txt
+*.sfm-part
+*.sfm-backup
+
+# Cópias de recuperação OAuth também contêm segredos.
+google.json.sfm-*
+token.txt.sfm-*
+login.disabled*
+google.json.tmp.*
+token.txt.tmp.*
+
+# Estado de conta e cópias com autorização OAuth
+drive-account.json*
+
+# Dados de transferencias locais nunca entram na distribuicao/Git.
+transfer.bin*
+partial-*
+
+/build-helper/
+/SfmUpdateHelper.nro
+/SfmUpdateHelper.elf
+/SfmUpdateHelper.nacp
