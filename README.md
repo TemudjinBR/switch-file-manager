@@ -34,6 +34,18 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 > **Resultados fisicos da 0.10.10, relatados pelo proprietario:** acesso ao Drive, Manter conectado e desconectar/reconectar funcionaram. O novo anexo tambem aprova FTP isolado, antes e apos Drive. FTP + Drive simultaneos, identificacao da versao e recuperacao de download com queda de internet falharam. A Missao 3.1 nao esta aprovada para producao. A **0.10.13 experimental** acrescenta diagnosticos na tela, downloads recuperaveis e identidade do build; ainda exige nova validacao fisica. O relato historico **“Falha ao salvar login no cartão SD.”** permanece registrado em [Google Drive](docs/GOOGLE_DRIVE.md).
 
+## Menu de ações contextual — candidato experimental
+
+O botão **X** mostra somente as ações relevantes ao painel ativo. Ao abrir o programa ou entrar numa pasta, **sem foco escolhido nem marcações**, aparecem apenas **Arquivos e pastas**, **Transferências**, **Organização** e **Sistema**. **Ferramentas** deixa de ser uma categoria principal.
+
+Ao selecionar um arquivo/pasta com o controle, toque ou Y, aparecem diretamente **Copiar**, **Mover**, **Selecionar tudo**, **Excluir**, **Renomear** e **Compactar em ZIP**. Para arquivos **.zip** do microSD, a última opção é **Extrair ZIP**. Com vários itens marcados, **Desmarcar tudo** substitui Selecionar tudo; **Renomear** deixa de aparecer; com vários ZIPs, **Extrair ZIPs** processa cada um em sua pasta. No Drive, compactar e extrair localmente ficam ocultos.
+
+A marcação avançada (somente arquivos/pastas, inverter, limpar) continua pelo atalho **ZL + Y**; propriedades detalhadas pelo **ZL + X**. **B** volta à pasta superior. A seleção por Y permanece independente da posição do cursor.
+
+Em **Sistema → Sobre** estão a descrição, o autor, a versão real e, somente mais abaixo, a contribuição voluntária. Não há anúncio de Pix na lista Sistema.
+
+**Estado:** alteração proposta na branch de desenvolvimento experimental; a interface necessita compilação/CI e validação no Switch Lite antes de ser declarada estável. A categoria Transferências agrega os acessos aos mecanismos existentes, **mas a fila local, o FTP e o Drive ainda não compartilham um único motor de tarefas**.
+
 ## Por que usar
 
 | Diferencial | Benefício no uso diário |
@@ -58,7 +70,7 @@ O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.13. Toda
 - **Dois painéis independentes:** abra pastas diferentes no SD ou use um painel local e outro do Drive. O painel ativo recebe as ações e o outro fornece o destino nas transferências compatíveis.
 - **Controles físicos e toque:** alterne o painel, abra itens, suba diretórios, navegue por páginas e role as listas. As pastas aparecem antes dos arquivos.
 - **Informações na listagem:** nome, tipo visual, tamanho de arquivos, caminho e ordem atual. A data local aparece quando a ordenação por data está selecionada; documentos nativos do Drive recebem indicação própria.
-- **Atualização das listagens:** comando manual em **Ações → Ordenar e buscar → Atualizar as listas**, após operações e ao detectar alterações concluídas pelo FTP. Atualizar a lista limpa as marcações.
+- **Atualização das listagens:** comando manual em **X → Organização → Atualizar painéis**, após operações e ao detectar alterações concluídas pelo FTP. Atualizar a lista limpa as marcações.
 
 ### 2. Arquivos e pastas
 
@@ -70,7 +82,7 @@ O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.13. Toda
 
 ### 3. Seleção múltipla avançada
 
-O menu **Ações → Seleção múltipla** oferece individualmente:
+O atalho **ZL + Y** abre a seleção avançada e oferece individualmente:
 
 - Marcar todos os itens visíveis.
 - Marcar somente arquivos.
@@ -91,7 +103,7 @@ Favoritos e histórico são salvos no cartão. Ordenação, inversão, filtro e 
 
 ### 5. Fila de transferências locais
 
-Em **Ações → Fila de transferências**, é possível **adicionar cópias**, **adicionar movimentações**, **ver tarefas pendentes**, **executar a fila** e **limpar as tarefas** sem apagar arquivos.
+Em **X → Transferências → Fila local de cópias e movimentos**, é possível **adicionar cópias**, **adicionar movimentações**, **ver tarefas pendentes**, **executar a fila** e **limpar as tarefas** sem apagar arquivos.
 
 A fila aceita **até 20 tarefas**, cada uma podendo conter vários itens, somente entre pastas do SD. Adicionar uma tarefa ainda não transfere os arquivos. A execução acompanha o progresso e, em falha ou cancelamento, mantém a tarefa interrompida e as seguintes para revisão. **A fila não persiste após encerrar o aplicativo e não aceita Google Drive.** Uma tarefa parcialmente executada não é desfeita automaticamente.
 
@@ -112,7 +124,7 @@ A correção de persistência da Missão 3 continua preservada na 0.10.12: o log
 
 ### 7. FTP e transferência Wi-Fi
 
-- **Servidor FTP integrado na porta 2121**, iniciado e encerrado em **Ações → Transferência Wi-Fi**. O aplicativo mostra o endereço exato para conectar pelo cliente FTP.
+- **Servidor FTP integrado na porta 2121**, iniciado e encerrado em **X → Transferências → Servidor FTP (Wi-Fi)**. O aplicativo mostra o endereço exato para conectar pelo cliente FTP.
 - **Upload e download de arquivos**, listagem de diretórios, navegação, criação e remoção de pastas vazias, exclusão de arquivos, renomeação e consulta de tamanho/data.
 - **Modos passivo e ativo**, listagens LIST/NLST/MLSD/MLST e **retomada de download com REST**. A retomada de upload é recusada.
 - **Estado do servidor:** clientes conectados, arquivos concluídos, total transferido e última atividade. O cabeçalho também informa clientes, listagens e arquivos; o limite de código é de quatro clientes.
@@ -172,7 +184,7 @@ A galeria está preparada para receber imagens reais conforme o [guia de captura
 
 ### 13. Atualizações — implementado, ainda experimental
 
-**Ações → Atualizações** consulta o repositório oficial em segundo plano e mostra versão instalada/disponível, canal, notas, bytes e estado. **ESTÁVEL é o padrão**; EXPERIMENTAL exige escolha explícita. A checagem ao abrir pode ser desativada. Download e instalação exigem confirmação; não há instalação silenciosa nem downgrade automático.
+**X → Sistema → Atualizações** consulta o repositório oficial em segundo plano e mostra versão instalada/disponível, canal, notas, bytes e estado. **ESTÁVEL é o padrão**; EXPERIMENTAL exige escolha explícita. A checagem ao abrir pode ser desativada. Download e instalação exigem confirmação; não há instalação silenciosa nem downgrade automático.
 
 HTTPS verifica certificados/nome/data. SHA-256 e metadados vinculam o NRO e o auxiliar ao manifesto. A instalação ocorre em **outro NRO**, após sair do aplicativo, com backup, recuperação e rollback explícito. Caminho desconhecido, diferente do oficial ou cópia incompatível bloqueiam a instalação. Esses fluxos têm testes de host e compilação; **não estão homologados no Switch Lite**. [Atualização e recuperação](docs/ATUALIZACOES.md).
 
@@ -280,6 +292,22 @@ O anexo atualizado aprova FTP isolado, antes e depois do Drive; a falha relatada
 - [Relatar um problema](https://github.com/TemudjinBR/switch-file-manager/issues), com passos e dados de ambiente, sem credenciais ou códigos OAuth.
 
 A documentação reformulada aparece primeiro na branch do PR; a página da `main` só muda depois de uma integração aprovada. Esta missão não faz merge nem publica Release.
+
+## Apoie o desenvolvimento
+
+Se o Switch File Manager é útil para você, considere uma contribuição **voluntária**. Esse apoio ajuda a manter o projeto ativo e incentiva novas melhorias. O aplicativo continua gratuito, com ou sem contribuição.
+
+<p align="center">
+  <img src="assets/pix_doacoes.svg" width="260" height="260" alt="QR Code Pix estático para contribuição voluntária ao Switch File Manager">
+</p>
+
+<p align="center">
+  <strong>Escaneie o QR Code com seu banco e escolha o valor que deseja contribuir.</strong><br>
+  Beneficiário: Flavio Hessnauer Filho<br>
+  <small>Contribuição totalmente opcional. Obrigado pelo apoio!</small>
+</p>
+
+O QR Code é **estático, sem valor fixo**. Confira os dados do destinatário antes de autorizar qualquer transferência no seu banco. Não é necessário abrir uma página externa do Nubank.
 
 ## Créditos e licenciamento
 
