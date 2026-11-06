@@ -65,8 +65,10 @@ class ContextMenuTests(unittest.TestCase):
         self.assertIn('"Arquivos e pastas", "Transferências", "Organização", "Sistema"', text)
         self.assertIn("contextualCommands(state)", text)
         self.assertIn("static void aboutScreen()", text)
-        self.assertIn("drawDonationQr(803, 187, 5)", text)
+        self.assertIn("drawDonationQr(803, 194, 5)", text)
         self.assertNotIn('"Compactar e extrair (ZIP)..."', text)
+        self.assertIn("drawOfficialIcon(884, 42, 3)", text)
+        self.assertTrue((ROOT / "include/ui/official_icon.h").exists())
         self.assertNotIn('"Ferramentas"', text)
         self.assertIn('{"Atualizações", "Configurações do atualizador", "Versão e diagnósticos", "Sobre"}', text)
 
