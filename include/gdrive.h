@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <functional>
 #include "cloud/download_manager.h"
 
 namespace gd {
@@ -20,10 +21,14 @@ struct Progress {
     virtual downloads::Action action() { return downloads::Action::Continue; }
     virtual void transfer(const downloads::Status&) {}
     virtual ~Progress() {}
+    virtual bool restart(const std::string&) { return true; }
 };
 
 bool netInit();
 void netExit();
+// Executado na thread chamadora entre operacoes de E/S; nao chamar outra API Drive no callback.
+void setNetworkPump(std::function<bool()> pump);
+std::string networkDiagnostics();
 std::string lastError();
 enum class ErrorSource { None, Storage, Google, Network, Protocol, Other };
 ErrorSource lastErrorSource();

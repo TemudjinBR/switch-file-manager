@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <atomic>
 #include <pthread.h>
+#include <thread>
 #include <string>
 #include <vector>
 #include <array>
@@ -92,17 +93,36 @@ int spawn(pthread_t& thread, void* (*entry)(void*), void* arg, const char* stage
     pthread_attr_t attr;
     int code = pthread_attr_init(&attr);
     if (code) return code;
-    // Buffers de transferencia sao vetores no heap; pilha menor reduz pressao no modo applet.
+    // Pilha explicita; buffers de transferencia permanecem no heap.
     code = pthread_attr_setstacksize(&attr, 256 * 1024);
     if (!code) code = pthread_create(&thread, &attr, entry, arg);
     pthread_attr_destroy(&attr);
     return code;
 }
 
+bool nonblocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    return flags >= 0 && fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+bool waitSocket(int fd, bool writing, unsigned timeoutMs = 20000) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (active) {
+        fd_set set; FD_ZERO(&set); FD_SET(fd, &set);
+        timeval instant{0, 0};
+        int ready = select(fd + 1, writing ? nullptr : &set, writing ? &set : nullptr, nullptr, &instant);
+        if (ready > 0) return true;
+        if (ready < 0 && errno != EINTR) return false;
+        if (timeoutMs && std::chrono::steady_clock::now() >= deadline) { errno = ETIMEDOUT; return false; }
+        // Dormir fora da chamada BSD libera a sessao IPC para outros clientes e Drive.
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    errno = ECANCELED; return false;
+}
 bool writeAll(int fd, const char* p, size_t n) {
     while (n && active) {
         ssize_t k = send(fd, p, n, 0);
         if (k < 0 && errno == EINTR) continue;
+        if (k < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) && waitSocket(fd, true)) continue;
         if (k <= 0) return false;
         p += k; n -= size_t(k);
     }
@@ -204,19 +224,18 @@ int passiveListener() {
     if (bind(fd, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(fd, 1) != 0) {
         close(fd); return -1;
     }
+    if (!nonblocking(fd)) { close(fd); return -1; }
     return fd;
 }
 int acceptData(int passive, int control) {
-    // 15s deadline while checking the stop request every 200ms.
-    for (int i = 0; i < 75 && active; ++i) {
-        fd_set readset; FD_ZERO(&readset); FD_SET(passive, &readset);
-        timeval tv{0, 200000};
-        int n = select(passive + 1, &readset, nullptr, nullptr, &tv);
-        if (n < 0 && errno != EINTR) break;
-        if (n <= 0) continue;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (active && std::chrono::steady_clock::now() < deadline) {
+        if (!waitSocket(passive, false, 15000)) break;
         sockaddr_in remote{}; socklen_t len = sizeof(remote);
         int data = accept(passive, (sockaddr*)&remote, &len);
+        if (data < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) continue;
         if (data < 0) return -1;
+        if (!nonblocking(data)) { close(data); return -1; }
         sockaddr_in ctrlPeer{}; len = sizeof(ctrlPeer);
         if (getpeername(control, (sockaddr*)&ctrlPeer, &len) != 0 ||
             ctrlPeer.sin_addr.s_addr != remote.sin_addr.s_addr) {
@@ -232,13 +251,10 @@ int acceptData(int passive, int control) {
 bool readLine(int fd, std::string& result) {
     result.clear();
     while (active && result.size() < 2048) {
-        fd_set readset; FD_ZERO(&readset); FD_SET(fd, &readset);
-        timeval t{0, 200000};
-        int ready = select(fd + 1, &readset, nullptr, nullptr, &t);
-        if (ready == 0 || (ready < 0 && errno == EINTR)) continue;
-        if (ready < 0) return false;
+        if (!waitSocket(fd, false, 0)) return false;
         char c;
         ssize_t got = recv(fd, &c, 1, 0);
+        if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) continue;
         if (got <= 0) return false;
         if (c == '\n') return true;
         if (c != '\r') result += c;
@@ -264,6 +280,7 @@ bool receiveFile(int fd, FILE* file) {
         ssize_t count = recv(fd, buf.data(), buf.size(), 0);
         if (count == 0) return true;
         if (count < 0 && errno == EINTR) continue;
+        if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) && waitSocket(fd, false)) continue;
         if (count < 0) { sfm_diag::write("ERRO", "recv errno=" + std::to_string(errno)); return false; }
         size_t remaining = (size_t)count, index = 0;
         while (remaining) {
@@ -453,13 +470,12 @@ void session(int fd, int slotIndex) {
                     if(flags>=0)fcntl(data,F_SETFL,flags|O_NONBLOCK);
                     int rc=connect(data,(sockaddr*)&activeAddr,sizeof(activeAddr));
                     if(rc!=0&&errno==EINPROGRESS){
-                        fd_set writable;FD_ZERO(&writable);FD_SET(data,&writable);
-                        timeval wait{3,0};rc=select(data+1,nullptr,&writable,nullptr,&wait);
+                        rc = waitSocket(data, true, 3000) ? 1 : -1;
                         int err=0;socklen_t sz=sizeof(err);
                         if(rc>0&&getsockopt(data,SOL_SOCKET,SO_ERROR,&err,&sz)==0&&err==0)rc=0;
                         else rc=-1;
                     }
-                    if(flags>=0)fcntl(data,F_SETFL,flags);
+                    if (data >= 0 && !nonblocking(data)) rc = -1;
                     if(rc!=0){close(data);data=-1;}
                     else{timeval timeout{20,0};setsockopt(data,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout));setsockopt(data,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof(timeout));}
                 }
@@ -512,15 +528,17 @@ void session(int fd, int slotIndex) {
 void serve() {
     while (active) {
         fd_set sockets; FD_ZERO(&sockets); FD_SET(listener, &sockets);
-        timeval tv{0, 200000};
+        timeval tv{0, 0};
         int ready = select(listener + 1, &sockets, nullptr, nullptr, &tv);
         if (ready < 0 && errno != EINTR) {
             event("etapa=escutar-select errno=" + std::to_string(errno));
             active = false; break;
         }
+        if (!ready) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
         if (ready > 0 && active) {
             int fd = accept(listener, nullptr, nullptr);
             if(fd<0)continue;
+            if (!nonblocking(fd)) { close(fd); continue; }
             int freeSlot=-1;
             for(int i=0;i<MAX_CLIENTS;i++)if(!clients[i].busy.load()){freeSlot=i;break;}
             if(freeSlot<0){
@@ -537,8 +555,10 @@ void serve() {
             }, reinterpret_cast<void*>(static_cast<uintptr_t>(freeSlot)), "thread-cliente");
             if (code) {
                 slot.busy=false; slot.control=-1;
-                const char* message="421 Thread unavailable\r\n"; send(fd,message,strlen(message),0); close(fd);
+                // Publicar o diagnostico antes de avisar/fechar o cliente; a UI pode
+                // consulta-lo imediatamente apos receber 421.
                 event("etapa=thread-cliente pthread=" + std::to_string(code));
+                const char* message="421 Thread unavailable\r\n"; send(fd,message,strlen(message),0); close(fd);
             } else slot.joinable = true;
         }
     }
@@ -564,10 +584,6 @@ bool start(std::string& error) {
     if (active) return true;
     // Limpar somente nossos descritores de uma execucao anterior ja encerrada.
     join(worker, workerJoinable);
-    for (auto& slot : clients) {
-        int fd = slot.control.load(); if (fd >= 0) shutdown(fd, SHUT_RDWR);
-        fd = slot.data.load(); if (fd >= 0) shutdown(fd, SHUT_RDWR);
-    }
     for (auto& slot : clients) join(slot.thread, slot.joinable);
     if (listener >= 0) { close(listener); listener = -1; }
     if (!netReady) {
@@ -608,6 +624,7 @@ bool start(std::string& error) {
     address = "ftp://" + std::string(inet_ntoa(local.sin_addr)) + ":" + std::to_string(ntohs(bound.sin_port));
     transfersDone = 0; totalBytes = 0; transferBytes = 0;listingsDone=0;connectedClients=0;changesDone=0;
     event("Aguardando conexao");
+    if (!nonblocking(listener)) { failure(error, "listener-nao-bloqueante", errno); return abort(); }
     active = true;
     int code = spawn(worker, [](void*) -> void* { serve(); return nullptr; }, nullptr, "thread-servidor");
     if (code) { active = false; failure(error, "thread-servidor", code); return abort(); }
@@ -619,10 +636,8 @@ void stop() {
     std::lock_guard<std::mutex> guard(lifecycleLock);
     active = false;
     join(worker, workerJoinable);
-    for(auto& slot:clients){
-        int fd=slot.control.load();if(fd>=0)shutdown(fd,SHUT_RDWR);
-        fd=slot.data.load();if(fd>=0)shutdown(fd,SHUT_RDWR);
-    }
+    // Descritores nao bloqueantes pertencem ao worker. Evitar shutdown pela UI:
+    // o numero pode ter sido fechado/reutilizado por outra conexao concorrente.
     for(auto& slot:clients) join(slot.thread, slot.joinable);
     if (listener >= 0) { close(listener); listener = -1; }
     if (netReady) { sfm::net::release(sfm::net::Client::Ftp); netReady = false; }

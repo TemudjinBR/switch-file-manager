@@ -3,6 +3,7 @@
 #include "security/oauth.h"
 #include "sfm_diag.h"
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
@@ -11,6 +12,7 @@
 #include <fcntl.h>
 #include <limits>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <thread>
 #include <unistd.h>
 #ifdef HOST_TEST
@@ -40,11 +42,17 @@ bool fail(Error& error, Kind kind, const std::string& stage, int code, const std
 }
 bool sd(Error& error, const char* stage, int code) { return fail(error, Kind::Storage, stage, code ? code : EIO, "Falha no SD; parcial preservado"); }
 uint32_t crc(uint32_t previous, const uint8_t* data, size_t length) {
+    static const auto table = [] {
+        std::array<uint32_t, 256> values{};
+        for (unsigned i = 0; i < values.size(); ++i) {
+            uint32_t v = i;
+            for (unsigned bit = 0; bit < 8; ++bit) v = (v >> 1) ^ (0xedb88320u & (0u - (v & 1)));
+            values[i] = v;
+        }
+        return values;
+    }();
     uint32_t value = ~previous;
-    for (size_t i = 0; i < length; ++i) {
-        value ^= data[i];
-        for (int bit = 0; bit < 8; ++bit) value = (value >> 1) ^ (0xedb88320u & (0u - (value & 1)));
-    }
+    for (size_t i = 0; i < length; ++i) value = table[(value ^ data[i]) & 255] ^ (value >> 8);
     return ~value;
 }
 void number(std::string& out, uint64_t value) { for (unsigned i = 0; i < 8; ++i) out += char(value >> (i * 8)); }
@@ -324,6 +332,8 @@ bool run(const std::string& area, const std::string& owner, const std::string& i
         status.delayMs = 0; return true;
     };
     auto restart = [&](const Remote& remote, const std::string& reason) {
+        if (reason != "novo-download" && observer && !observer->restart(reason))
+            return fail(error, Kind::Protocol, "reinicio-adiado", 0, "Reinicio adiado; parcial e registro preservados");
         notify(State::Restarting, reason);
         if (file.value >= 0) {
             if (close(file.value) != 0) { file.value = -1; return sd(error, "fechar-parcial-anterior", errno); }
@@ -366,6 +376,17 @@ bool run(const std::string& area, const std::string& owner, const std::string& i
             if (!save(dir, job, error)) return false;
             error = {}; notify(State::Completed); return true;
         }
+        // Consulta o volume do parcial; so faltam os bytes ainda nao gravados. Reservar
+        // margem para registros/cluster nao garante exclusividade contra outro escritor.
+        struct statvfs volume{};
+        if (!before("espaco-livre") || statvfs(dir.c_str(), &volume) != 0) return sd(error, "espaco-livre", errno);
+        const uint64_t unit = volume.f_frsize ? volume.f_frsize : volume.f_bsize;
+        const uint64_t available = unit && uint64_t(volume.f_bavail) > UINT64_MAX / unit
+            ? UINT64_MAX : uint64_t(volume.f_bavail) * unit;
+        const uint64_t remaining = job.remote.size - job.offset;
+        const uint64_t margin = std::max<uint64_t>(unit, 4096) * 8;
+        if (remaining > available || margin > available - remaining)
+            return sd(error, "espaco-livre", ENOSPC);
         const uint64_t start = job.offset;
         const uint64_t end = start + std::min(policy.chunkBytes, job.remote.size - start) - 1;
         if (lseek(file.value, off_t(start), SEEK_SET) < 0) return sd(error, "posicionar-parcial", errno);

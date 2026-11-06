@@ -11,6 +11,8 @@ int main() {
         if (action == "network-off") sfm::net::testNetwork(false);
         if (action == "network-on") sfm::net::testNetwork(true);
         if (action.rfind("fault-", 0) == 0) wifi::testFailure(action.substr(6), 11);
+        if (action == "resource-fail") socketFailNext = (104u << 9) | 1u;
+        if (action == "session-count") std::cout << "sessions=" << socketSessionCount << " " << sfm::net::diagnostics() << "\n";
         if (action == "fail") socketFailNext = 0x345;
         if (action == "drive-on") std::cout << "drive=" << gd::netInit() << " " << gd::lastError() << '\n';
         if (action == "drive-off") gd::netExit();

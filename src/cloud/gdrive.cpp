@@ -24,6 +24,9 @@
 #include <errno.h>
 #include <time.h>
 #include <poll.h>
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -303,6 +306,39 @@ static std::string jescape(const std::string& s) {
 
 // ----------------------------------------------------------------- conexão
 
+static std::function<bool()> g_networkPump;
+static std::atomic<unsigned> g_requests{0};
+static std::atomic<bool> g_stopNetwork{false};
+static std::string g_networkStage = "ocioso";
+static unsigned g_lastNetworkResult = 0;
+static int g_networkErrno = 0;
+void setNetworkPump(std::function<bool()> pump) { g_networkPump = std::move(pump); }
+static bool interactiveIo() { return g_downloadFeedback || bool(g_networkPump); }
+static bool ioPulse() {
+    if (g_stopNetwork.load()) return false;
+    if (g_downloadFeedback && (!g_downloadFeedback->tick(0) || g_downloadFeedback->action() != downloads::Action::Continue)) return false;
+    if (g_networkPump && !g_networkPump()) return false;
+    return !g_stopNetwork.load();
+}
+std::string networkDiagnostics() {
+    return "etapa=" + g_networkStage + "\nResult=" + std::to_string(g_lastNetworkResult) +
+        " errno=" + std::to_string(g_networkErrno) + " requisicoes=" + std::to_string(g_requests.load()) + " parada=" + std::to_string(g_stopNetwork.load()) +
+        "\n" + sfm::net::diagnostics();
+}
+static bool waitSocket(int fd, bool write, unsigned timeoutMs) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (ioPulse()) {
+        fd_set set; FD_ZERO(&set); FD_SET(fd, &set); timeval instant{0,0};
+        int ready = select(fd + 1, write ? nullptr : &set, write ? &set : nullptr, nullptr, &instant);
+        if (ready > 0) return true;
+        if (ready < 0 && errno != EINTR) { g_networkErrno = errno; return false; }
+        if (std::chrono::steady_clock::now() >= deadline) { errno = ETIMEDOUT; g_networkErrno = errno; return false; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    errno = ECANCELED; g_networkErrno = errno; return false;
+}
+
+
 static bool g_netUp = false;
 #ifndef HOST_TEST
 static bool g_sslUp = false;
@@ -310,6 +346,8 @@ static SslContext g_sslCtx;
 #endif
 
 bool netInit() {
+    if (g_requests.load() && g_stopNetwork.load()) { setErr("Parada de rede solicitada.", ErrorSource::Network); return false; }
+    if (!g_requests.load()) g_stopNetwork = false;
     if (!g_netUp) {
         std::string error;
         if (!sfm::net::acquire(sfm::net::Client::Drive, error)) { setErr(error, ErrorSource::Network); return false; }
@@ -335,12 +373,21 @@ bool netInit() {
     return true;
 }
 
-void netExit() {
+static void closeNetwork() {
 #ifndef HOST_TEST
     if (g_sslUp) { sslContextClose(&g_sslCtx); sslExit(); g_sslUp = false; }
 #endif
     if (g_netUp) { sfm::net::release(sfm::net::Client::Drive); g_netUp = false; }
 }
+void netExit() {
+    g_stopNetwork = true;
+    // A conexao fecha seus descritores antes de liberar o contexto/posse compartilhada.
+    if (!g_requests.load()) closeNetwork();
+}
+struct RequestScope {
+    RequestScope() { ++g_requests; }
+    ~RequestScope() { if (g_requests.fetch_sub(1) == 1 && g_stopNetwork.load()) closeNetwork(); }
+};
 
 struct Resp {
     int status = 0;
@@ -386,6 +433,8 @@ struct Conn {
         addrinfo* res = nullptr;
         char ps[16];
         snprintf(ps, sizeof ps, "%d", port);
+        g_networkStage = "dns";
+        if (interactiveIo() && !ioPulse()) { setErr("Cancelado."); return false; }
         if (getaddrinfo(host.c_str(), ps, &hints, &res) != 0 || !res) {
             setErr("Sem conexão com a internet (DNS).");
             return false;
@@ -393,11 +442,25 @@ struct Conn {
         fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (fd < 0) { freeaddrinfo(res); setErr("Falha ao criar o socket."); return false; }
         struct timeval tv;
-        tv.tv_sec = g_downloadFeedback ? 5 : 30;
+        tv.tv_sec = interactiveIo() ? 5 : 30;
         tv.tv_usec = 0;
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
-        if (connect(fd, res->ai_addr, res->ai_addrlen) != 0) {
+        if (interactiveIo()) {
+            int flags = fcntl(fd, F_GETFL, 0);
+            if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0) { freeaddrinfo(res); setErr("Falha ao configurar TCP."); return false; }
+        }
+        g_networkStage = "tcp-conectar";
+        int connected = connect(fd, res->ai_addr, res->ai_addrlen);
+        if (connected != 0 && interactiveIo() && (errno == EINPROGRESS || errno == EWOULDBLOCK)) {
+            if (waitSocket(fd, true, 10000)) {
+                int code = 0; socklen_t length = sizeof code;
+                if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &code, &length) == 0 && !code) connected = 0;
+                else if (code) errno = code;
+            }
+        }
+        if (connected != 0) {
+            g_networkErrno = errno;
             freeaddrinfo(res);
             closeAll();
             setErr("Não foi possível conectar ao servidor.");
@@ -418,12 +481,14 @@ struct Conn {
         rc = sslConnectionSetHostName(&ssl, host.c_str(), (u32)host.size());
         if (R_FAILED(rc)) { setErr("Falha ao configurar o servidor seguro."); closeAll(); return false; }
         u32 sz = 0, certs = 0;
-        if (g_downloadFeedback) {
+        if (interactiveIo()) {
             rc = sslConnectionSetIoMode(&ssl, SslIoMode_NonBlocking);
             if (R_FAILED(rc)) { setErr("Falha ao configurar SSL nao bloqueante."); closeAll(); return false; }
+            g_networkStage = "ssl-handshake";
             rc = sfm::net::waitIo([&] { return sslConnectionDoHandshake(&ssl, &sz, &certs, NULL, 0); },
-                [&] { return g_downloadFeedback->tick(0) && g_downloadFeedback->action() == downloads::Action::Continue; }, 15000);
+                [] { return ioPulse(); }, 15000);
         } else rc = sslConnectionDoHandshake(&ssl, &sz, &certs, NULL, 0);
+        g_lastNetworkResult = unsigned(rc);
         if (R_FAILED(rc)) {
             char b[96];
             snprintf(b, sizeof b, "Falha na conexão segura (código 0x%X). Verifique data/hora e internet.", (unsigned)rc);
@@ -448,37 +513,50 @@ struct Conn {
     }
 
     long rawRead(void* b, size_t n) {
-#ifdef HOST_TEST
-        return recv(fd, b, n, 0);
-#else
+#ifndef HOST_TEST
         if (usingTls) {
             u32 out = 0;
-            Result rc = g_downloadFeedback ? sfm::net::waitIo([&] { return sslConnectionRead(&ssl, b, (u32)n, &out); },
-                [&] { return g_downloadFeedback->tick(0) && g_downloadFeedback->action() == downloads::Action::Continue; }, 5000)
+            g_networkStage = "ssl-ler";
+            Result rc = interactiveIo() ? sfm::net::waitIo([&] { return sslConnectionRead(&ssl, b, (u32)n, &out); },
+                [] { return ioPulse(); }, 5000)
                 : sslConnectionRead(&ssl, b, (u32)n, &out);
-            if (g_downloadFeedback && R_FAILED(rc)) sfm_diag::write("DRIVE_DOWNLOAD", "etapa=ssl-ler Result=" + std::to_string(unsigned(rc)));
+            g_lastNetworkResult = unsigned(rc);
+            if (interactiveIo() && R_FAILED(rc)) sfm_diag::write("DRIVE_DOWNLOAD", "etapa=ssl-ler Result=" + std::to_string(unsigned(rc)));
             if (R_FAILED(rc)) return -1;
             return (long)out;
         }
-        return recv(fd, b, n, 0);
 #endif
+        g_networkStage = "tcp-ler";
+        for (;;) {
+            if (interactiveIo() && !waitSocket(fd, false, 5000)) return -1;
+            long result = recv(fd, b, n, 0);
+            if (interactiveIo() && result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) continue;
+            return result;
+        }
     }
 
     bool rawWriteAll(const void* b, size_t n) {
         const uint8_t* p = (const uint8_t*)b;
         while (n > 0) {
             long w;
-#ifdef HOST_TEST
-            w = send(fd, p, n, 0);
-#else
+            if (interactiveIo() && !ioPulse()) return false;
+#ifndef HOST_TEST
             if (usingTls) {
                 u32 out = 0;
                 auto write = [&] { return sslConnectionWrite(&ssl, p, (u32)std::min<size_t>(n, 1 << 20), &out); };
-                Result rc = g_downloadFeedback ? sfm::net::waitIo(write,
-                    [&] { return g_downloadFeedback->tick(0) && g_downloadFeedback->action() == downloads::Action::Continue; }, 5000) : write();
+                g_networkStage = "ssl-gravar";
+                Result rc = interactiveIo() ? sfm::net::waitIo(write,
+                    [] { return ioPulse(); }, 5000) : write();
+                g_lastNetworkResult = unsigned(rc);
                 w = R_FAILED(rc) ? -1 : (long)out;
-            } else w = send(fd, p, n, 0);
+            } else
 #endif
+            {
+                g_networkStage = "tcp-gravar";
+                if (interactiveIo() && !waitSocket(fd, true, 5000)) return false;
+                w = send(fd, p, n, 0);
+                if (interactiveIo() && w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) continue;
+            }
             if (w <= 0) return false;
             p += w;
             n -= (size_t)w;
@@ -488,7 +566,7 @@ struct Conn {
 
     bool fill() {
         if (bpos < blen) return true;
-        if (g_downloadFeedback && (!g_downloadFeedback->tick(0) || g_downloadFeedback->action() != downloads::Action::Continue)) return false;
+        if (interactiveIo() && !ioPulse()) return false;
         long n = rawRead(buf, BS);
         if (n <= 0) return false;
         bpos = 0;
@@ -557,6 +635,9 @@ static Target apiTarget(const std::string& host) {
 
 static bool httpRequest(const Target& tg, const std::string& hostHeader, const std::string& method, const std::string& path,
                         const std::vector<std::string>& headers, const BodySrc* body, Progress* wp, Resp& resp, Sink& sink) {
+    if (!netInit()) return false;
+    RequestScope request;
+    g_networkStage = "http-iniciar"; g_lastNetworkResult = 0; g_networkErrno = 0;
     Conn c;
     if (!c.connectTo(tg.host, tg.port, tg.tls)) return false;
 
@@ -1201,6 +1282,7 @@ struct DownloadObserver : downloads::Observer {
     bool bytes(uint64_t n) override { return !progress || progress->tick(n); }
     downloads::Action action() override { return progress ? progress->action() : downloads::Action::Continue; }
     void update(const downloads::Status& status) override { if (progress) progress->transfer(status); }
+    bool restart(const std::string& reason) override { return !progress || progress->restart(reason); }
 };
 }
 bool downloadFile(const Item& it, const std::string& dstPath, Progress* progress) {
@@ -1286,7 +1368,7 @@ bool uploadFile(const std::string& srcPath, const std::string& parentId, const s
     std::string sessionPath = loc.substr(ps);
 
     // 2) envia por partes (múltiplos de 256 KB)
-    const size_t CH = 8u << 20;
+    const size_t CH = 1u << 20;
     std::vector<uint8_t> chunk(CH);
     uint64_t pos = 0;
     bool ok = true;

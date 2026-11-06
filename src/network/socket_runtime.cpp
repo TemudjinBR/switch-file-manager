@@ -10,6 +10,7 @@ namespace sfm::net {
 namespace {
 std::mutex lock;
 bool owners[2] = {false, false};
+unsigned sessionCount = 0;
 std::string detail = "sockets=nao-inicializados";
 #ifdef HOST_TEST
 bool networkAvailable = true;
@@ -37,7 +38,20 @@ bool acquire(Client client, std::string& error) {
     unsigned index = static_cast<unsigned>(client);
     if (owners[index]) return true;
     if (!owners[0] && !owners[1]) {
-        Result rc = socketInitializeDefault();
+        // Quatro clientes FTP + listener + Drive + encerramento/consulta concorrente.
+        SocketInitConfig config = *socketGetDefaultInitConfig();
+        config.num_bsd_sessions = 8;
+        Result rc = socketInitialize(&config);
+        std::string fallback;
+        const unsigned value = unsigned(rc) & 0x3fffffu;
+        // Recusar erros desconhecidos; voltar ao orçamento original somente em falta de recursos.
+        if (value == ((104u << 9) | 1u) || value == ((105u << 9) | 1u) ||
+            value == ((132u << 9) | 1u) || value == ((2u << 9) | 345u)) {
+            fallback = "\nmodo=recursos-reduzidos causa=" + resultText(rc);
+            sfm_diag::write("REDE", "etapa=bsd-orcamento fallback=3 " + resultText(rc));
+            config.num_bsd_sessions = 3;
+            rc = socketInitialize(&config);
+        }
         if (R_FAILED(rc)) {
             detail = "etapa=sockets-inicializar\n" + resultText(rc) + "\n" + context();
             error = detail;
@@ -45,7 +59,8 @@ bool acquire(Client client, std::string& error) {
             // socketInitialize já desfaz a inicialização parcial no libnx. Não liberar outro dono.
             return false;
         }
-        detail = "etapa=sockets-iniciados Result=0x00000000\n" + context();
+        sessionCount = config.num_bsd_sessions;
+        detail = "etapa=sockets-iniciados Result=0x00000000\n" + context() + fallback;
         sfm_diag::write("REDE", detail);
     }
     owners[index] = true;
@@ -66,7 +81,7 @@ void release(Client client) {
 namespace sfm::net {
 std::string diagnostics() {
     std::lock_guard<std::mutex> guard(lock);
-    return detail + "\nFTP=" + std::to_string(owners[0]) + " Drive=" + std::to_string(owners[1]);
+    return detail + (sessionCount == 3 ? "\nmodo=recursos-reduzidos" : "") + std::string("\nbsd_sessoes=") + std::to_string(sessionCount) + " FTP=" + std::to_string(owners[0]) + " Drive=" + std::to_string(owners[1]);
 }
 bool localAddress(unsigned& address, std::string& error) {
     std::lock_guard<std::mutex> guard(lock);

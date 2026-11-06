@@ -477,6 +477,9 @@ static u64 g_pStartMs = 0;
 static u64 g_pFilesDone = 0, g_pFilesTotal = 0;
 static bool g_pCountFiles = false;
 static bool g_dlActive = false, g_dlPaused = false;
+static bool g_progressVisible = false, g_ftpConsent = false;
+static std::string g_driveBusyText;
+static void manageFtpDuringDrive();
 static gd::downloads::Status g_dlStatus;
 static u64 g_dlBase = 0, g_dlOtherTotal = 0;
 static u64 progressNowMs() { return armTicksToNs(armGetSystemTick()) / 1000000ULL; }
@@ -487,6 +490,7 @@ static std::string formatDuration(u64 seconds) {
     return b;
 }
 static void beginTransferProgress() {
+    g_progressVisible = true;
     g_pDone = 0; g_pTotal = 0; g_lastUI = 0;
     g_pFilesDone = 0; g_pFilesTotal = 0; g_pCountFiles = true;
     g_pStartMs = progressNowMs();
@@ -544,6 +548,7 @@ static void drawProgressOverlay() {
         drawText(fS, g_dlPaused ? "X  Continuar" : "X  Pausar", bx + 180, by + 305, C_TXT, 0, 2);
         drawText(fS, "B  Cancelar", bx + 520, by + 305, C_TXT, 0, 2);
     } else drawText(fS, "B: solicitar cancelamento", bx + bw - 30, by + 184, C_DIM, 0, 1);
+    drawText(fS, std::string("Y: ") + (wifi::running() ? "parar FTP | " + wifi::url() : "iniciar FTP"), bx + 30, by + bh + 12, C_TXT, bw - 60);
 }
 
 static void tickProgress(bool force = false) {
@@ -552,6 +557,7 @@ static void tickProgress(bool force = false) {
     padUpdate(&pad);
     u64 down = padGetButtonsDown(&pad);
     if (down & HidNpadButton_B) g_cancel = true;
+    if (down & HidNpadButton_Y) manageFtpDuringDrive();
     if (g_dlActive) {
         updateTouch();
         if (down & HidNpadButton_X) g_dlPaused = !g_dlPaused;
@@ -591,11 +597,38 @@ static std::string wrapText(const std::string& s, size_t width) {
 }
 
 static void showBusy(const std::string& text) {
+    g_driveBusyText = text;
     drawMain();
     fillRect(0, 0, W, H, Col{0, 0, 0, 175});
     fillRound(W / 2 - 280, H / 2 - 56, 560, 112, 18, C_PANEL);
     drawText(fM, text, W / 2, H / 2 - 18, C_TXT, 520, 2);
+    drawText(fS, std::string("B: cancelar | Y: ") + (wifi::running() ? "parar FTP" : "iniciar FTP"), W / 2, H / 2 + 25, C_DIM, 520, 2);
     present();
+}
+
+static void manageFtpDuringDrive() {
+    if (wifi::running()) { wifi::stop(); return; }
+    if (!g_ftpConsent) {
+        if (modal("Servidor FTP", "Ativar acesso total ao cartao SD?\nLeitura e gravacao, sem senha.\nUse somente no Wi-Fi confiavel.", {"Cancelar", "Iniciar FTP"}) != 1) return;
+        g_ftpConsent = true;
+    }
+    std::string error;
+    if (!wifi::start(error)) message("FTP indisponivel", wrapText(error, 48));
+}
+// A UI e o Drive permanecem na mesma thread; somente FTP possui workers.
+// Nunca chamar uma API Drive neste callback (evita reentrancia do OAuth/SSL).
+static bool driveNetworkPump() {
+    if (!appletMainLoop()) { g_quit = true; g_cancel = true; return false; }
+    if (g_progressVisible) tickProgress();
+    else {
+        padUpdate(&pad);
+        u64 down = padGetButtonsDown(&pad);
+        if (down & HidNpadButton_B) g_cancel = true;
+        if (down & HidNpadButton_Y) manageFtpDuringDrive();
+        u64 now = progressNowMs();
+        if (now - g_lastUI >= 80) { g_lastUI = now; showBusy(g_driveBusyText); }
+    }
+    return !g_cancel;
 }
 
 struct LocalProgress : sfm::storage::Progress {
@@ -633,13 +666,22 @@ static bool askText(const char* guide, const std::string& init, std::string& out
 }
 
 static void reloadBoth() {
+    g_progressVisible = false;
+    // Recarregar os paineis nao deve apagar o resultado de cancelamento da operacao.
+    const bool cancelled = g_cancel;
+    g_cancel = false;
     for (int i = 0; i < 2; i++) panes[i].reload();
+    g_cancel = cancelled || g_cancel;
     refreshSpace();
 }
 
 // ---------------------------------------------------------------- Google Drive
 
 struct Bridge : gd::Progress {
+    bool restart(const std::string& reason) override {
+        std::string explanation = reason == "versao-remota-alterada" ? "O arquivo mudou no Drive" : "O servidor recusou a retomada deste parcial";
+        return modal("Retomada indisponivel", wrapText(explanation + ". O parcial anterior sera preservado. Recomecar do zero?", 48), {"Preservar e voltar", "Reiniciar com seguranca"}) == 1;
+    }
     bool tick(uint64_t n) override {
         if (!g_dlActive) g_pDone += n;
         tickProgress();
@@ -689,6 +731,7 @@ static bool driveLoad(Pane& p) {
 }
 
 static bool ensureDriveLogin(bool newAccount = false) {
+    g_cancel = false;
     if (!gd::netInit()) {
         message("Sem rede", wrapText(gd::lastError(), 52));
         return false;
@@ -1604,6 +1647,15 @@ static void transferQueueMenu() {
     }
 }
 
+static void networkDiagnostic() {
+    auto lines = splitLines(wrapText(wifi::diagnostics() + "\nDrive: " + gd::networkDiagnostics(), 48));
+    for (size_t first = 0; first < lines.size(); first += 8) {
+        std::string page;
+        for (size_t i = first; i < std::min(first + 8, lines.size()); ++i) page += lines[i] + "\n";
+        bool more = first + 8 < lines.size();
+        if (modal("Diagnostico FTP / Drive", page, more ? std::vector<std::string>{"Voltar", "Proxima pagina"} : std::vector<std::string>{"Voltar"}) != 1 || !more) break;
+    }
+}
 static void wifiMenu() {
     if (!wifi::running()) {
         if (modal("Servidor FTP",
@@ -1612,10 +1664,11 @@ static void wifiMenu() {
                   "Use somente no Wi-Fi confiavel.\n"
                   "Desligue quando terminar.",
                   {"Cancelar", "Iniciar FTP"}) != 1) return;
+        g_ftpConsent = true;
         std::string err;
         if (!wifi::start(err)) {
             int choice = modal("FTP indisponivel", wrapText(err, 48), {"Voltar", "Diagnostico detalhado"});
-            if (choice == 1) message("Diagnostico FTP", wrapText(wifi::diagnostics(), 48));
+            if (choice == 1) networkDiagnostic();
             return;
         }
     }
@@ -1632,7 +1685,7 @@ static void wifiMenu() {
         "\n" + last,
         {"Manter ativo", "Parar servidor FTP", "Diagnostico FTP"});
     if (choice == 1) wifi::stop();
-    if (choice == 2) message("Diagnostico FTP", wrapText(wifi::diagnostics(), 48));
+    if (choice == 2) networkDiagnostic();
 }
 
 static void downloadsMenu() {
@@ -1737,6 +1790,8 @@ static void movePane(Pane& p, int delta) {
 }
 
 static void handleInput() {
+    g_cancel = false;
+    g_progressVisible = false;
     static int holdUp = 0, holdDown = 0, dragPane = -1, accum = 0;
     u64 d = padGetButtonsDown(&pad);
     u64 h = padGetButtons(&pad);
@@ -1808,6 +1863,7 @@ int main(int argc, char** argv) {
     const bool graphicsReady = initialize();
 
     if (graphicsReady) {
+        gd::setNetworkPump(driveNetworkPump);
         g_favs = loadLines("favoritos.txt");
         g_hist = loadLines("historico.txt");
         refreshSpace();
@@ -1837,6 +1893,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    gd::setNetworkPump({});
     sfm_diag::write("APP", "Encerramento normal");
     wifi::stop();
     gd::netExit();

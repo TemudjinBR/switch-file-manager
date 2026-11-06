@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
+#include <cerrno>
 #include <unistd.h>
 using namespace gd::downloads;
 struct Fake : Transport {
@@ -10,10 +11,11 @@ struct Fake : Transport {
     bool inspect(const std::string& id, Remote& remote, Error& error) override {
         ++inspections;
         if (mode == "offline" || (mode == "cut-offline" && fetched)) { error = {Kind::Network, "offline", 100, "Ficticio"}; return false; }
-        remote = {id, changed ? "2" : "1", "", data().size()}; return true;
+        remote = {id, changed ? "2" : "1", "", mode == "large-prefix" ? uint64_t(2) << 30 : data().size()}; return true;
     }
     Fetch fetch(const Remote&, uint64_t start, uint64_t last, const Writer& write, Error& error) override {
         ++fetched; std::cout << "range=" << start << '-' << last << std::endl;
+        if (mode == "large-prefix") { error={Kind::Network,"queda-ficticia",104,"Ficticio"}; Fetch result; return result; }
         Fetch result; result.http = 206; result.headersValid = true; result.mediaTag = changed ? "tag-2" : "tag-1";
         if (mode == "bad-range") { result.headersValid=false; result.retryable=false; error={Kind::Protocol,"intervalo-invalido",206,"Ficticio"}; return result; }
         if (mode == "no-range" && start) { result.http=200;result.headersValid=false;result.restart=true;return result; }
@@ -36,6 +38,7 @@ struct Fake : Transport {
 struct UI : Observer {
     std::string mode, destination; Status status; unsigned paused = 0;
     void update(const Status& next) override { status=next; if (mode=="concurrent" && next.state==State::Finalizing) { std::ofstream out(destination); out<<"personal-concurrent"; } if (next.state==State::Paused) ++paused; std::cout << "state=" << label(next.state) << " offset=" << next.current << " attempt=" << next.attempt << std::endl; }
+    bool restart(const std::string&) override { return mode != "decline-restart"; }
     Action action() override {
         if (mode=="cancel" && status.current>=10000) return Action::Cancel;
         if (mode=="pause" && status.current>=10000 && paused<3) return Action::Pause;
@@ -48,7 +51,7 @@ int main(int argc,char**argv) {
     if (argc>5) {
         std::string hook=argv[5];
         if(hook.rfind("crash=",0)==0)testCrash(hook.substr(6));
-        if(hook.rfind("fail=",0)==0)testFailure(hook.substr(5),5);
+        if(hook.rfind("fail=",0)==0)testFailure(hook.substr(5),hook.substr(5)=="espaco-livre"?ENOSPC:5);
     }
     Error error;
     if(command=="list") {
@@ -58,7 +61,7 @@ int main(int argc,char**argv) {
         std::cout<<"invalid="<<invalid<<std::endl;return ok?0:1;
     }
     Fake transport;transport.mode=mode; UI ui;ui.mode=mode;ui.destination=dest;
-    Policy policy;policy.baseDelayMs=1;policy.maxDelayMs=4;policy.chunkBytes=65536;policy.maxRetries=3;
+    Policy policy;policy.baseDelayMs=1;policy.maxDelayMs=4;policy.chunkBytes=65536;policy.maxRetries=mode=="large-prefix"?0:3;
     bool ok=run(area,"fixture-owner",command=="other"?"other-id":"fixture-id",dest,transport,&ui,error,policy);
     if(!ok)std::cerr<<"stage="<<error.stage<<" code="<<error.code<<" "<<error.message<<std::endl;
     return ok?0:1;

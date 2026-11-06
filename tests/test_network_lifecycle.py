@@ -130,3 +130,15 @@ class NetworkLifecycleTests(unittest.TestCase):
         diagnostic = '\n'.join(self.command('diagnostic'))
         self.assertIn('etapa=thread-cliente pthread=11', diagnostic)
         self.transfer(ftp[0])
+
+    def test_session_budget_and_explicit_resource_fallback(self):
+        self.command('ftp-on')
+        self.assertIn('sessions=8', '\n'.join(self.command('session-count')))
+        self.command('ftp-off'); self.command('resource-fail')
+        started=self.command('ftp-on'); self.transfer(started[0])
+        diagnostic='\n'.join(self.command('session-count'))
+        self.assertIn('sessions=3',diagnostic)
+        # localAddress atualiza a etapa, mas o orçamento efetivo continua visível.
+        self.assertIn('bsd_sessoes=3',diagnostic)
+        self.command('drive-on'); self.command('ftp-off')
+        self.assertEqual(self.command('drive-off')[-1],'init=3 exit=2 up=0')

@@ -1,5 +1,9 @@
 from pathlib import Path
 import subprocess
+import base64
+import hashlib
+import struct
+import zlib
 import tempfile
 import unittest
 
@@ -134,3 +138,55 @@ class DownloadManagerTests(unittest.TestCase):
     def test_concurrent_destination_is_not_overwritten_at_publication(self):
         self.run_job('concurrent', code=1)
         self.assertEqual(self.dest.read_bytes(), b'personal-concurrent')
+
+    def test_no_space_preserves_checkpoint_and_can_resume(self):
+        self.run_job(hook='crash=apos-checkpoint',code=77)
+        before={str(p):p.read_bytes() for p in self.area.glob('*/partial-*')}
+        result=self.run_job(hook='fail=espaco-livre',code=1)
+        self.assertIn('stage=espaco-livre code=28',result.stderr)
+        self.assertNotIn('range=',result.stdout)
+        self.assertFalse(self.dest.exists())
+        self.assertTrue(all(Path(p).read_bytes()==data for p,data in before.items()))
+        self.assertIn('range=65536-',self.run_job().stdout)
+        self.assertEqual(self.dest.read_bytes(),expected())
+
+    def test_restart_requires_observer_consent_and_keeps_previous_generation(self):
+        self.run_job(hook='crash=apos-checkpoint',code=77)
+        journal=next(self.area.glob('*/transfer.bin'))
+        old=journal.read_bytes()
+        # Modifica a versão remota na fixture: não é alteração de dados pessoais.
+        old_fields=[]; cursor=7
+        for _ in range(5):
+            length=struct.unpack_from('<Q',old,cursor)[0]; cursor+=8
+            old_fields.append(old[cursor:cursor+length]); cursor+=length
+        old_fields[3]=b'older-version'
+        changed=b'SFMDL2\n'+b''.join(struct.pack('<Q',len(x))+x for x in old_fields)+old[cursor:-8]
+        changed+=struct.pack('<Q',zlib.crc32(changed))
+        journal.write_bytes(changed)
+        parts={p:p.read_bytes() for p in self.area.glob('*/partial-*')}
+        result=self.run_job('decline-restart',code=1)
+        self.assertIn('reinicio-adiado',result.stderr)
+        self.assertEqual(journal.read_bytes(),changed)
+        self.assertEqual({p:p.read_bytes() for p in self.area.glob('*/partial-*')},parts)
+        self.assertFalse(self.dest.exists())
+        self.run_job(); self.assertEqual(self.dest.read_bytes(),expected())
+
+    def test_two_gib_file_resumes_at_validated_one_point_two_gib_prefix(self):
+        # Sparse file: exercita offsets/CRC reais sem gravar 1,2 GiB nem baixar 2 GiB.
+        length=(12*(1<<30))//10
+        def field(value): return struct.pack('<Q',len(value))+value
+        owner=b'fixture-owner'; identity=b'fixture-id'; dest=str(self.dest).encode()
+        key=base64.urlsafe_b64encode(hashlib.sha256(field(owner)+field(identity)+field(dest)).digest()).rstrip(b'=').decode()
+        self.area.mkdir(); (self.area/'area.txt').write_bytes(b'SFM_DOWNLOAD_AREA_1\n')
+        directory=self.area/key; directory.mkdir()
+        part=directory/'partial-0'
+        with part.open('wb') as output: output.truncate(length)
+        checksum=0; remaining=length; zeros=bytes(1<<20)
+        while remaining:
+            count=min(remaining,len(zeros)); checksum=zlib.crc32(zeros[:count],checksum); remaining-=count
+        job=b'SFMDL2\n'+b''.join(map(field,[owner,identity,dest,b'1',b'']))
+        job+=struct.pack('<5Q',2<<30,length,0,checksum,1)
+        job+=struct.pack('<Q',zlib.crc32(job)); (directory/'transfer.bin').write_bytes(job)
+        result=self.run_job('large-prefix',code=1)
+        self.assertIn('range='+str(length)+'-',result.stdout)
+        self.assertFalse(self.dest.exists()); self.assertEqual(part.stat().st_size,length)

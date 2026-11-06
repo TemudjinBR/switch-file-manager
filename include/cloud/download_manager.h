@@ -21,6 +21,7 @@ struct Observer {
     virtual bool bytes(uint64_t) { return true; }
     virtual Action action() { return Action::Continue; }
     virtual void update(const Status&) {}
+    virtual bool restart(const std::string&) { return true; }
 };
 struct Fetch {
     int http = 0;

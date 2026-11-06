@@ -35,6 +35,10 @@ def package(nro, output, root=ROOT):
               'Confirme também o Build em Ações > Versão e diagnóstico do NRO.\n'
               'Se a identidade não corresponder a este manifesto, outro NRO foi aberto.\n'
               'As configurações existentes em switch/switch-manager são preservadas.\n'
+              'Android: extraia primeiro o ZIP de Artifacts e depois SwitchFileManager-v' + version + '.zip.\n'
+              'Feche o aplicativo antes de copiar a pasta switch para a raiz do microSD pelo gerenciador Android.\n'
+              'Nao copie a pasta externa do ZIP nem apague google.json, token.txt ou favoritos/historico.\n'
+              'Reabra o Homebrew Menu e confira versao, build e Caminho em execucao na mesma copia.\n'
               'Este pacote exige validação no console antes de uma Release pública.\n')
     archive = output / f'SwitchFileManager-v{version}.zip'
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as z:
