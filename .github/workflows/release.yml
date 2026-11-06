@@ -1,99 +1,78 @@
-name: Publicar versão validada
+name: Promover versão homologada
 
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: Tag existente vX.Y.Z, revisada e correspondente ao VERSION
+      candidate_sha:
+        description: Commit completo homologado; deve ser o head exato do PR
         required: true
         type: string
-      console_validado:
-        description: Confirmo testes no Switch físico conforme docs/TESTES.md
+      pr_number:
+        description: PR revisado, aberto e com base main
         required: true
-        default: false
-        type: boolean
+        default: '1'
+        type: string
+      approval_comment:
+        description: ID do comentário HOMOLOGACAO_SFM_1 do proprietário no PR
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: publicar-${{ inputs.tag }}
+  group: sfm-distribuicao
   cancel-in-progress: false
 
 jobs:
   criteria:
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      issues: read
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
-    outputs:
-      sha: ${{ steps.criteria.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Conferir critérios de publicação
-        id: criteria
+      - name: Verificar commit, CI, proteção, revisão e homologação física
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
-          CONSOLE_VALIDADO: ${{ inputs.console_validado }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$CONSOLE_VALIDADO" = true ]]
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          sha="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
-          git checkout --detach "$sha"
-          [[ "v$(python3 scripts/version.py)" = "$RELEASE_TAG" ]]
-          test -s "release-notes/$RELEASE_TAG.md"
-          # O relatório deve registrar dispositivo, Atmosphère e resultados reais.
-          test -s "docs/validacao-console/$RELEASE_TAG.md"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          APPROVAL_COMMENT: ${{ inputs.approval_comment }}
+        run: python3 scripts/github_distribution.py criteria --sha "$CANDIDATE_SHA" --pr "$PR_NUMBER" --approval-comment "$APPROVAL_COMMENT"
   validated:
     needs: criteria
     uses: ./.github/workflows/build.yml
     with:
-      ref: ${{ needs.criteria.outputs.sha }}
-
+      ref: ${{ inputs.candidate_sha }}
+      channel: stable
   publish:
     needs: [criteria, validated]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
+      actions: read
+      issues: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.criteria.outputs.sha }}
+          fetch-depth: 0
+          ref: ${{ inputs.candidate_sha }}
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: SwitchFileManager-validado
           path: dist
-      - name: Recusar sobrescrita de Release existente
+      - name: Revalidar gates, efetuar merge controlado e publicar
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name' > tags.txt
-          python3 - <<'PY'
-          import os
-          tags = open('tags.txt').read().splitlines()
-          if os.environ['RELEASE_TAG'] in tags:
-              raise SystemExit('Release existente; não sobrescrever')
-          PY
-          cd dist
-          sha256sum --check SwitchFileManager.nro.sha256
-          sha256sum --check "SwitchFileManager-${RELEASE_TAG}.zip.sha256"
-      - name: Publicar arquivos verificados
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          RELEASE_SHA: ${{ needs.criteria.outputs.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # gh release create recusa Release existente e --verify-tag impede criar tags.
-          gh release create "$RELEASE_TAG" dist/* --verify-tag \
-            --target "$RELEASE_SHA" --title "Switch File Manager $RELEASE_TAG" \
-            --notes-file "release-notes/$RELEASE_TAG.md"
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          APPROVAL_COMMENT: ${{ inputs.approval_comment }}
+        run: python3 scripts/github_distribution.py publish --channel stable --sha "$CANDIDATE_SHA" --pr "$PR_NUMBER" --approval-comment "$APPROVAL_COMMENT"

@@ -9,7 +9,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 
 TARGET := SwitchFileManager
 BUILD := build
-SOURCES := src/app src/core src/ui src/storage src/cloud src/network src/archives src/diagnostics src/security third_party/miniz
+SOURCES := src/app src/core src/ui src/storage src/cloud src/network src/archives src/diagnostics src/security src/updates third_party/miniz
 DATA := data
 INCLUDES := include third_party/miniz third_party/stb
 
@@ -55,12 +55,15 @@ export NROFLAGS += --icon=$(APP_ICON) --nacp=$(CURDIR)/$(TARGET).nacp
 
 .PHONY: $(BUILD) clean all
 all: $(BUILD)
+ifeq ($(TARGET),SwitchFileManager)
+	@$(MAKE) --no-print-directory TARGET=SfmUpdateHelper BUILD=build-helper SOURCES="tools/updater src/updates src/core src/network src/security src/diagnostics src/cloud" CPPFILES="updater_main.cpp update_core.cpp" CFILES="" INCLUDES="include build/generated" APP_TITLE="Atualizador do Switch File Manager"
+endif
 $(BUILD):
 	@python3 $(CURDIR)/scripts/prepare.py
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 clean:
-	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
+	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).nacp $(TARGET).elf build-helper SfmUpdateHelper.nro SfmUpdateHelper.nacp SfmUpdateHelper.elf
 else
 .PHONY: all
 DEPENDS := $(OFILES:.o=.d)

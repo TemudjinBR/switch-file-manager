@@ -9,7 +9,7 @@ def build_identity(root=ROOT):
     root = Path(root)
     paths = [root / 'VERSION', root / 'Makefile', root / 'assets/icon.jpg']
     for directory, patterns in [('src', ('*.cpp', '*.c')), ('include', ('*.h',)),
-                                ('third_party', ('*.h', '*.c')), ('scripts', ('*.py', '*.sh'))]:
+                                ('third_party', ('*.h', '*.c')), ('scripts', ('*.py', '*.sh')), ('tools', ('*.cpp',))]:
         for pattern in patterns:
             paths.extend((root / directory).rglob(pattern))
     digest = hashlib.sha256(b'SFM_BUILD_SCHEMA_1')

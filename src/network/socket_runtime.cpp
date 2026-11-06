@@ -9,7 +9,7 @@
 namespace sfm::net {
 namespace {
 std::mutex lock;
-bool owners[2] = {false, false};
+bool owners[3] = {false, false, false};
 unsigned sessionCount = 0;
 std::string detail = "sockets=nao-inicializados";
 #ifdef HOST_TEST
@@ -37,7 +37,7 @@ bool acquire(Client client, std::string& error) {
     error.clear();
     unsigned index = static_cast<unsigned>(client);
     if (owners[index]) return true;
-    if (!owners[0] && !owners[1]) {
+    if (!owners[0] && !owners[1] && !owners[2]) {
         // Quatro clientes FTP + listener + Drive + encerramento/consulta concorrente.
         SocketInitConfig config = *socketGetDefaultInitConfig();
         config.num_bsd_sessions = 8;
@@ -71,7 +71,7 @@ void release(Client client) {
     unsigned index = static_cast<unsigned>(client);
     if (!owners[index]) return;
     owners[index] = false;
-    if (!owners[0] && !owners[1]) {
+    if (!owners[0] && !owners[1] && !owners[2]) {
         socketExit();
         sfm_diag::write("REDE", "etapa=sockets-encerrados");
     }
@@ -81,7 +81,7 @@ void release(Client client) {
 namespace sfm::net {
 std::string diagnostics() {
     std::lock_guard<std::mutex> guard(lock);
-    return detail + (sessionCount == 3 ? "\nmodo=recursos-reduzidos" : "") + std::string("\nbsd_sessoes=") + std::to_string(sessionCount) + " FTP=" + std::to_string(owners[0]) + " Drive=" + std::to_string(owners[1]);
+    return detail + (sessionCount == 3 ? "\nmodo=recursos-reduzidos" : "") + std::string("\nbsd_sessoes=") + std::to_string(sessionCount) + " FTP=" + std::to_string(owners[0]) + " Drive=" + std::to_string(owners[1]) + " Atualizacoes=" + std::to_string(owners[2]);
 }
 bool localAddress(unsigned& address, std::string& error) {
     std::lock_guard<std::mutex> guard(lock);

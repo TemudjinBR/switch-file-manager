@@ -27,3 +27,8 @@ drive-account.json*
 # Dados de transferencias locais nunca entram na distribuicao/Git.
 transfer.bin*
 partial-*
+
+/build-helper/
+/SfmUpdateHelper.nro
+/SfmUpdateHelper.elf
+/SfmUpdateHelper.nacp

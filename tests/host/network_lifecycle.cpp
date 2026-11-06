@@ -15,6 +15,8 @@ int main() {
         if (action == "session-count") std::cout << "sessions=" << socketSessionCount << " " << sfm::net::diagnostics() << "\n";
         if (action == "fail") socketFailNext = 0x345;
         if (action == "drive-on") std::cout << "drive=" << gd::netInit() << " " << gd::lastError() << '\n';
+        if (action == "updates-on") sfm::net::acquire(sfm::net::Client::Updates,error);
+        if (action == "updates-off") sfm::net::release(sfm::net::Client::Updates);
         if (action == "drive-off") gd::netExit();
         if (action == "ftp-on") {
             bool ok = wifi::start(error);
@@ -24,5 +26,5 @@ int main() {
         if (action == "ftp-off") wifi::stop();
         std::cout << "init=" << socketInitCalls << " exit=" << socketExitCalls << " up=" << socketServiceUp << std::endl;
     }
-    wifi::stop(); gd::netExit();
+    wifi::stop(); gd::netExit(); sfm::net::release(sfm::net::Client::Updates);
 }

@@ -8,7 +8,7 @@ from prepare import build_identity
 from version import read_version
 
 
-def validate(path, expected_version=None, expected_build=None):
+def validate(path, expected_version=None, expected_build=None, expected_title="Switch File Manager"):
     data = Path(path).read_bytes()
     def require(condition, message):
         if not condition:
@@ -36,7 +36,7 @@ def validate(path, expected_version=None, expected_build=None):
     nacp = data[size + nacp_off:size + nacp_off + nacp_size]
     title = nacp[:0x200].split(b'\0', 1)[0].decode('utf-8')
     version = nacp[0x3060:0x3070].split(b'\0', 1)[0].decode('utf-8')
-    require(title == 'Switch File Manager', 'Título NACP incorreto')
+    require(title == expected_title, 'Título NACP incorreto')
     if expected_version is not None:
         require(version == expected_version, 'Versão NACP diverge de VERSION')
     markers = set(re.findall(rb'SFM_BUILD:(v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{12})\x00', data[:size]))
@@ -49,5 +49,6 @@ def validate(path, expected_version=None, expected_build=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('nro', type=Path)
+    parser.add_argument('--title', default='Switch File Manager')
     args = parser.parse_args()
-    print(validate(args.nro, read_version(), build_identity()))
+    print(validate(args.nro, read_version(), build_identity(), args.title))

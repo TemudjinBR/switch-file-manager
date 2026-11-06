@@ -1,0 +1,43 @@
+name: Disponibilizar pré-Release experimental
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Head completo da branch codex/reorganizacao-estabilizacao
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sfm-distribuicao
+  cancel-in-progress: false
+
+jobs:
+  validated:
+    if: github.actor == github.repository_owner
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ inputs.candidate_sha }}
+      channel: experimental
+  publish:
+    needs: validated
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SwitchFileManager-validado
+          path: dist
+      - name: Publicar somente como experimental, sem merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: python3 scripts/github_distribution.py publish --channel experimental --sha "$CANDIDATE_SHA"

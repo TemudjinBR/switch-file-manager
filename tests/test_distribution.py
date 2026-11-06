@@ -17,7 +17,7 @@ from prepare import build_identity
 from inspect_installation import inspect
 
 
-def minimal_nro(root=ROOT):
+def minimal_nro(root=ROOT, title_name='Switch File Manager'):
     # Fixture de formato, não um programa executável; o teste opcional usa o NRO compilado.
     executable = bytearray(0x3000)
     executable[0x10:0x14] = b'NRO0'
@@ -25,7 +25,7 @@ def minimal_nro(root=ROOT):
     for offset, start in ((0x20, 0), (0x28, 0x1000), (0x30, 0x2000)):
         struct.pack_into('<II', executable, offset, start, 0x1000)
     nacp = bytearray(0x4000)
-    title = b'Switch File Manager'
+    title = title_name.encode()
     nacp[:len(title)] = title
     marker = ('SFM_BUILD:' + build_identity(root)).encode() + b'\0'
     executable[0x100:0x100+len(marker)] = marker
@@ -60,13 +60,16 @@ class DistributionTests(unittest.TestCase):
             with self.assertRaises(ValueError): validate(path, '99.99.99')
 
     def check_package(self, nro, directory):
+        helper = Path(nro).with_name('SfmUpdateHelper.nro')
+        if not helper.exists(): helper.write_bytes(minimal_nro(title_name='Atualizador do Switch File Manager'))
         archive = package(nro, directory)
         first = archive.read_bytes()
         self.assertEqual(package(nro, directory).read_bytes(), first)
         digest = hashlib.sha256(Path(nro).read_bytes()).hexdigest()
         with zipfile.ZipFile(archive) as z:
-            self.assertEqual(set(z.namelist()), {SD_PATH, 'LEIA-ME.txt', 'manifest.json', 'SHA256SUMS'})
+            self.assertEqual(set(z.namelist()), {SD_PATH, 'switch/Switch File Manager/SfmUpdateHelper.nro', 'LEIA-ME.txt', 'manifest.json', 'SHA256SUMS'})
             self.assertEqual(z.read(SD_PATH), Path(nro).read_bytes())
+            self.assertEqual(z.read('switch/Switch File Manager/SfmUpdateHelper.nro'), helper.read_bytes())
             manifest = json.loads(z.read('manifest.json'))
             self.assertEqual(manifest['versao'], read_version())
             self.assertEqual(manifest['caminho_instalacao'], SD_PATH)
@@ -78,6 +81,8 @@ class DistributionTests(unittest.TestCase):
             self.assertIn(digest, z.read('SHA256SUMS').decode())
             self.assertIsNone(z.testzip())
         self.assertEqual((Path(directory) / 'SwitchFileManager.nro.sha256').read_text().split()[0], digest)
+        self.assertEqual((Path(directory)/'SfmUpdateHelper.nro.sha256').read_text().split()[0],hashlib.sha256(helper.read_bytes()).hexdigest())
+        self.assertEqual((Path(directory)/(archive.name+'.sha256')).read_text().split()[0],hashlib.sha256(archive.read_bytes()).hexdigest())
 
     def test_distribution_contents_and_determinism(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -129,8 +134,29 @@ class DistributionTests(unittest.TestCase):
             (root / 'token.txt').write_text(secrets[1])
             (root / 'drive-account.json.sfm-old-000').write_text(secrets[1])
             nro = root / 'test.nro'; nro.write_bytes(minimal_nro(root))
+            (root / 'SfmUpdateHelper.nro').write_bytes(minimal_nro(root, 'Atualizador do Switch File Manager'))
             archive = package(nro, root / 'dist', root=root)
             with zipfile.ZipFile(archive) as z:
                 for name in z.namelist():
                     for secret in secrets:
                         self.assertNotIn(secret.encode(), z.read(name))
+
+    def test_stable_package_channel_is_consistent_without_changing_binary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);nro=root/'SwitchFileManager.nro';nro.write_bytes(minimal_nro())
+            helper=root/'SfmUpdateHelper.nro';helper.write_bytes(minimal_nro(title_name='Atualizador do Switch File Manager'))
+            archive=package(nro,root/'dist',channel='stable')
+            update=json.loads((root/'dist/update.json').read_text())
+            self.assertEqual(update['channel'],'stable')
+            self.assertEqual(update['app']['sha256'],hashlib.sha256(nro.read_bytes()).hexdigest())
+            self.assertEqual(update['helper']['sha256'],hashlib.sha256(helper.read_bytes()).hexdigest())
+            with zipfile.ZipFile(archive) as z:self.assertEqual(json.loads(z.read('manifest.json'))['canal'],'stable')
+
+    @unittest.skipUnless(os.environ.get('SFM_TEST_NRO'), 'Auxiliar nativo disponível após compilar os dois NROs')
+    def test_compiled_helper_has_matching_version_build_and_official_icon(self):
+        path=Path(os.environ['SFM_TEST_NRO']).with_name('SfmUpdateHelper.nro')
+        metadata=validate(path,read_version(),build_identity(),'Atualizador do Switch File Manager')
+        self.assertEqual(metadata['versao'],read_version())
+        data=path.read_bytes();size=struct.unpack_from('<I',data,0x18)[0]
+        offset,length=struct.unpack_from('<QQ',data,size+8)
+        self.assertEqual(data[size+offset:size+offset+length],(ROOT/'assets/icon.jpg').read_bytes())

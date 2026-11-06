@@ -45,7 +45,7 @@ bool before(const std::string& stage) {
 bool fail(Error& error, File file, const std::string& stage, int code) {
     error.stage = stage;
     error.code = code ? code : EIO;
-    sfm_diag::write("DRIVE_SD", std::string("arquivo=") + filename(file) +
+    sfm_diag::write(file==File::Updates?"UPDATES_SD":"DRIVE_SD", std::string("arquivo=") + filename(file) +
                     " etapa=" + stage + " errno=" + std::to_string(error.code));
     return false;
 }
@@ -53,7 +53,7 @@ bool fail(Error& error, File file, const std::string& stage, int code) {
 void recoveryFailure(Error& error, File file, const std::string& stage, int code) {
     error.recoveryStage = stage;
     error.recoveryCode = code ? code : EIO;
-    sfm_diag::write("DRIVE_SD", std::string("arquivo=") + filename(file) +
+    sfm_diag::write(file==File::Updates?"UPDATES_SD":"DRIVE_SD", std::string("arquivo=") + filename(file) +
                     " etapa=" + stage + " errno=" + std::to_string(error.recoveryCode));
 }
 
@@ -198,7 +198,7 @@ bool recover(const std::string& path, File file, Error& error) {
         std::string confirmed;
         if (!read(path, confirmed, error, file, "recuperado")) return false;
         if (confirmed != previous) return fail(error, file, "comparar-recuperacao", EIO);
-        sfm_diag::write("DRIVE_SD", std::string("arquivo=") + filename(file) + " etapa=recuperado errno=0");
+        sfm_diag::write(file==File::Updates?"UPDATES_SD":"DRIVE_SD", std::string("arquivo=") + filename(file) + " etapa=recuperado errno=0");
         return true;
     }
     return true;
@@ -213,7 +213,7 @@ void rollback(const std::string& path, const std::string& temporary, const std::
     if (hadPrevious && !move(backup, path, "restaurar-anterior", recovery, file)) {
         recoveryFailure(error, file, recovery.stage, recovery.code); return;
     }
-    sfm_diag::write("DRIVE_SD", std::string("arquivo=") + filename(file) + " etapa=rollback-concluido errno=0");
+    sfm_diag::write(file==File::Updates?"UPDATES_SD":"DRIVE_SD", std::string("arquivo=") + filename(file) + " etapa=rollback-concluido errno=0");
 }
 }
 
@@ -224,6 +224,7 @@ const char* filename(File file) {
         case File::LoginState: return "login.disabled";
         case File::Account: return "drive-account.json";
         case File::Transfer: return "transfer.bin";
+        case File::Updates: return "update-settings.json";
     }
     return "desconhecido";
 }
@@ -310,7 +311,7 @@ bool save(const std::string& root, File file, const std::string& data, Error& er
         if (!error.code) fail(error, file, "comparar-final", errno ? errno : EIO);
         rollback(path, temporary, backup, hadPrevious, true, file, error); return false;
     }
-    sfm_diag::write("DRIVE_SD", std::string("arquivo=") + filename(file) + " etapa=gravado-e-relido errno=0");
+    sfm_diag::write(file==File::Updates?"UPDATES_SD":"DRIVE_SD", std::string("arquivo=") + filename(file) + " etapa=gravado-e-relido errno=0");
     return true;
 }
 

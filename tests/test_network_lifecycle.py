@@ -142,3 +142,10 @@ class NetworkLifecycleTests(unittest.TestCase):
         self.assertIn('bsd_sessoes=3',diagnostic)
         self.command('drive-on'); self.command('ftp-off')
         self.assertEqual(self.command('drive-off')[-1],'init=3 exit=2 up=0')
+
+    def test_updater_owner_cannot_tear_down_ftp_or_drive(self):
+        self.command('drive-on');ftp=self.command('ftp-on');self.command('updates-on')
+        self.assertEqual(self.command('updates-off')[-1],'init=1 exit=0 up=1')
+        self.transfer(ftp[0]);self.command('updates-on');self.command('ftp-off')
+        self.assertEqual(self.command('drive-off')[-1],'init=1 exit=0 up=1')
+        self.assertEqual(self.command('updates-off')[-1],'init=1 exit=1 up=0')

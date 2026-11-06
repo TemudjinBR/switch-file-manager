@@ -6,7 +6,7 @@
 #endif
 
 namespace gd::persist {
-enum class File { Credentials, Token, LoginState, Account, Transfer };
+enum class File { Credentials, Token, LoginState, Account, Transfer, Updates };
 struct Error {
     std::string stage;
     int code = 0;

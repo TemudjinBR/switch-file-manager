@@ -1,3 +1,4 @@
+#include "updates/update_service.h"
 // Switch File Manager - interface Commander, dois paineis e operacoes seguras
 // C++ / libnx (renderização por software, sem bibliotecas externas) + Google Drive
 
@@ -38,6 +39,8 @@ using namespace sfm::ui;
 static PadState pad;
 static bool g_quit = false, g_cancel = false;
 static std::string g_executable = "indisponivel";
+static sfm::updates::Service g_updates;
+static std::string updateMenuText();
 static u64 g_free = 0, g_total = 0;
 
 // ---------------------------------------------------------------- utilidades
@@ -425,6 +428,7 @@ static int modal(const std::string& title, const std::string& text, const std::v
             if (!inRect(tp.x, tp.y, bx, by, bw, bh)) return -1;
         }
 
+        if(title=="Atualizações") lines=splitLines(updateMenuText());
         // SFM_FTP_STATUS_0105: atualização visual em tempo real.
         if (title == "Servidor FTP ativo") {
             std::string last = wifi::lastActivity();
@@ -1744,11 +1748,119 @@ static void buildMenu() {
     }
 }
 
+static std::string g_updateHelper;
+static std::string updateMenuText() {
+    auto state = g_updates.status();
+    auto prefs = g_updates.prefs();
+    std::vector<std::string> lines = {
+        std::string("Instalada: ") + SFM_VERSION + " | " +
+            (prefs.channel == "stable" ? "ESTAVEL" : "EXPERIMENTAL"),
+        state.state.substr(0, 48),
+        state.available.version.empty() ? "Sem versao disponivel"
+                                        : "Disponivel: " + state.available.version + " | " +
+                                              fmtSize(state.available.app.size + state.available.helper.size),
+        "Bytes: " + fmtSize(state.done) + " / " + fmtSize(state.total),
+        prefs.automatic ? "Checagem ao abrir: ativada" : "Checagem ao abrir: desativada",
+        state.error.substr(0, 48),
+        state.error.size() > 48 ? state.error.substr(48, 48) : "",
+        "HTTPS + SHA-256; instalacao exige confirmacao"};
+    std::string out;
+    for (const auto &line : lines)
+        out += line + "\n";
+    return out;
+}
+static void updatesMenu() {
+    for (;;) {
+        auto status = g_updates.status();
+        auto prefs = g_updates.prefs();
+        int choice = modal("Atualizações", updateMenuText(),
+                           {"Verificar agora / atualizar estado", "Notas da versao", "Baixar atualizacao",
+                            "Instalar e reabrir", "Recuperar versao anterior",
+                            prefs.automatic ? "Desativar checagem ao abrir" : "Ativar checagem ao abrir",
+                            "Mudar canal", "Cancelar tarefa", "Voltar"});
+        if (choice < 0 || choice == 8)
+            return;
+        std::string error;
+        if (choice == 0) {
+            if (!status.busy && !g_updates.check(false, error))
+                message("Atualizações", wrapText(error, 48));
+        }
+        if (choice == 1) {
+            std::string notes =
+                status.available.notes.empty() ? "Nenhuma nota carregada" : status.available.notes;
+            for (size_t start = 0; start < notes.size(); start += 280)
+                if (modal("Notas da atualizacao", wrapText(notes.substr(start, 280), 48),
+                          {"Continuar", "Voltar"}) != 0)
+                    break;
+        }
+        if (choice == 2 &&
+            modal("Baixar atualizacao",
+                  "Baixar NRO e auxiliar do canal escolhido?\nO NRO instalado sera preservado.",
+                  {"Cancelar", "Baixar"}) == 1) {
+            if (!g_updates.download(error))
+                message("Atualizações", wrapText(error, 48));
+        }
+        if (choice == 3 || choice == 4) {
+            sfm::updates::Transaction transaction;
+            if (!envHasNextLoad() ||
+                !sfm::updates::runningTarget(g_executable, SFM_VERSION, SFM_BUILD_ID, error) ||
+                !g_updates.pending(transaction, error))
+                message("Instalacao bloqueada",
+                        wrapText(error.empty() ? "Launcher sem suporte seguro a proximo NRO" : error, 48));
+            else if (choice == 3 &&
+                     sfm::updates::compareVersions(transaction.manifest.version, SFM_VERSION) <= 0)
+                message("Atualizações", "Tarefa nao e uma versao mais nova; downgrade automatico bloqueado.");
+            else if (choice == 3 && prefs.channel != transaction.manifest.channel)
+                message("Canal diferente", "Mude explicitamente para o canal da tarefa antes de instalar.");
+            else if (modal(choice == 4 ? "Recuperar versao anterior" : "Instalar atualizacao",
+                           "O aplicativo sera encerrado. O auxiliar verificara os arquivos, preservara "
+                           "backup e tentara reabrir o NRO oficial. Funcao experimental, ainda sem "
+                           "homologacao fisica.",
+                           {"Cancelar", "Confirmar"}) == 1) {
+                if (!sfm::updates::validateNro(transaction.directory + "/helper.nro", transaction.manifest,
+                                               true, error))
+                    message("Auxiliar invalido", wrapText(error, 48));
+                else if ([&] {
+                             std::string request, ignored;
+                             bool requested = sfm::updates::readSmall(
+                                 transaction.directory + "/rollback.request", request, ignored);
+                             if (choice == 3 && requested) {
+                                 error = "Rollback ja solicitado; baixe novamente para criar outra tarefa";
+                                 return true;
+                             }
+                             if (choice == 4 && (!requested || request != "SFM_ROLLBACK_1\n"))
+                                 return !sfm::updates::writeExclusive(
+                                     transaction.directory + "/rollback.request", "SFM_ROLLBACK_1\n", error);
+                             return false;
+                         }())
+                    message("Rollback", wrapText(error, 48));
+                else {
+                    g_updateHelper = transaction.directory + "/helper.nro";
+                    g_quit = true;
+                    return;
+                }
+            }
+        }
+        if (choice == 5 && !g_updates.configure(prefs.channel, !prefs.automatic, error))
+            message("Atualizações", wrapText(error, 48));
+        if (choice == 6) {
+            int channel = modal("Canal de atualizacao",
+                                "ESTAVEL: somente versoes homologadas.\nEXPERIMENTAL: pode conter falhas e "
+                                "nao e homologado no Lite.",
+                                {"Manter atual", "ESTAVEL", "EXPERIMENTAL"});
+            if (channel > 0 &&
+                !g_updates.configure(channel == 1 ? "stable" : "experimental", prefs.automatic, error))
+                message("Atualizações", wrapText(error, 48));
+        }
+        if (choice == 7)
+            g_updates.cancel();
+    }
+}
 static void actionsMenu() {
     std::vector<std::string> o = {
         "Copiar para o outro painel", "Mover para o outro painel", "Renomear",
         "Nova pasta", "Apagar", "Seleção múltipla...",
-        "Fila de transferências...", "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta...", "Transferência Wi-Fi...", "Downloads do Drive...", "Versão e diagnóstico do NRO..."};
+        "Fila de transferências...", "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta...", "Transferência Wi-Fi...", "Downloads do Drive...", "Versão e diagnóstico do NRO...", "Atualizações..."};
     int r = modal("Ações — v" SFM_VERSION, "", o);
     if (r >= 0 && r < (int)o.size()) sfm_diag::write("ACAO", o[r]);
     switch (r) {
@@ -1767,6 +1879,7 @@ static void actionsMenu() {
         case 12: wifiMenu(); break;
         case 13: downloadsMenu(); break;
         case 14: buildMenu(); break;
+        case 15: updatesMenu(); break;
         default: break;
     }
 }
@@ -1864,6 +1977,8 @@ int main(int argc, char** argv) {
 
     if (graphicsReady) {
         gd::setNetworkPump(driveNetworkPump);
+        g_updates.initialize(g_executable,SFM_VERSION,SFM_BUILD_ID);
+        std::string updateError; g_updates.check(true,updateError);
         g_favs = loadLines("favoritos.txt");
         g_hist = loadLines("historico.txt");
         refreshSpace();
@@ -1893,10 +2008,19 @@ int main(int argc, char** argv) {
         }
     }
 
+    g_updates.stop();
     gd::setNetworkPump({});
     sfm_diag::write("APP", "Encerramento normal");
     wifi::stop();
     gd::netExit();
+    if(!g_updateHelper.empty()) {
+        Result result=envSetNextLoad(g_updateHelper.c_str(),("\""+g_updateHelper+"\"").c_str());
+        if(R_FAILED(result)) {
+            std::string error="Falha no next-load Result="+std::to_string(unsigned(result));
+            sfm_diag::write("UPDATES",error);
+            message("Auxiliar nao iniciado",wrapText(error+". O NRO instalado permanece intacto.",48));
+        }
+    }
     shutdown();
     return graphicsReady ? 0 : 1;
 }
