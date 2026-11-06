@@ -36,3 +36,13 @@ Ela identifica NROs com título Switch File Manager, extrai versões/hashes, sin
 ## Validação física mínima
 
 Na candidata 0.10.10, conferir versão no Homebrew Menu e no menu Ações para o mesmo NRO. Se divergirem, registrar somente versão/caminho/hash e diagnóstico não secreto, sem compartilhar o diretório OAuth. O relatório físico não foi fabricado nesta missão.
+
+## Identidade independente na 0.10.11
+
+O novo relato fisico informa que a versao da 0.10.10 nao mudou no aparelho; nao trouxe valor NACP/caminho/hash para comprovar a origem. A candidata mostra **SFM_VERSION** e **SFM_BUILD_ID** no cabecalho, alem de Acoes → Versao e diagnostico do NRO. O caminho argv[0] aparece quando fornecido pelo launcher.
+
+prepare calcula uma identidade deterministica vVERSAO-hash a partir dos fontes, headers, Makefile, scripts e icone; documentacao e diretorio de build nao alteram esse identificador. O marcador SFM_BUILD fica incorporado ao executavel. validate_nro e package exigem correspondencia com os fontes atuais; o manifesto/instrucoes do pacote incluem o mesmo build.
+
+A busca no proprio Switch e somente leitura, restrita a sdmc:/switch, profundidade/entradas/copias/bytes limitados. Confere NRO/ASET/NACP e procura o marcador de build com memoria limitada. NROs antigos podem mostrar build indisponivel. Uma busca limitada/cancelada e identificada, sem alegar inventario integral. Nenhuma copia e removida. A versao do NACP de cada copia e mostrada separadamente da identidade em execucao.
+
+Instalacao: extraia switch/Switch File Manager/SwitchFileManager.nro do ZIP experimental na raiz do SD, abra exatamente essa copia no Homebrew Menu e confira **0.10.11 mais o build do manifesto** no aplicativo. Se divergir, a identidade apresentada nao corresponde ao pacote; consulte caminho/cópias na UI. Nao apague google.json, token.txt ou o diretorio legado para atualizar.

@@ -1,5 +1,15 @@
 # Histórico de alterações
 
+## 0.10.11 — experimental, Missao 3.2 (06/11/2026)
+
+- Relato fisico da 0.10.10 incorporado: Drive/persistencia/reconexao funcionaram; FTP, versao e recuperacao de download falharam. A 3.1 nao esta aprovada para producao.
+- FTP usa IP local NIFM/BSD, sem sondagem externa, com diagnosticos de etapa/Result/errno/pthread na tela e threads com retorno verificado.
+- Downloads passam a ter area tecnica, checkpoints/CRC, Range/If-Range, revisao remota, backoff limitado, pausa/continuacao/cancelamento e recuperacao explicita apos reinicio.
+- Mudanca de versao remota ou Range recusado reinicia em outro parcial; destinos pessoais/concluidos sao preservados. Nenhuma retomada de upload implementada.
+- SSL dos downloads usa operacoes nao bloqueantes, com limite de espera sem ignorar erros de certificado.
+- Versao/build visiveis no cabecalho e diagnostico de caminho/copias do NRO somente leitura; pacote exige identidade correspondente aos fontes.
+- Autenticacao aprovada, dados legados, logo oficial e estrutura preservados. Sem merge/main/Release.
+
 ## 0.10.10 — experimental, Missão 3.1 (05/11/2026)
 
 - FTP e Drive compartilham inicialização/encerramento de sockets, com posse idempotente, retry e diagnóstico Result/contexto de applet/memória.

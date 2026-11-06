@@ -1,6 +1,6 @@
 # Roadmap
 
-## Etapa atual: rede, versão e contas experimentais 0.10.10
+## Etapa atual: FTP diagnosticavel, downloads recuperaveis e identidade 0.10.11
 
 As Missões 1/2/3 continuam preservadas. A Missão 3.1 acrescenta ciclo compartilhado de sockets, versão identificável e gerenciamento de contas com PKCE/state e persistência verificada. A confirmação no Switch Lite ainda depende de teste físico para o relato “Falha ao salvar login no cartão SD.”.
 
@@ -33,3 +33,7 @@ A entrega desta etapa continua experimental até cumprir a matriz física em `TE
 - Melhorias visuais depois de regressão documentada da interface atual.
 
 Não há prazo ou funcionalidade prometida sem implementação e validação. Soluções gratuitas e compatibilidade com Switch Lite continuam critérios de escolha.
+
+## Prioridade apos a Missao 3.2
+
+Executar o checklist fisico da 0.10.11, sem presumir resolucao de FTP/versao. “Falha ao salvar login no cartão SD.” e um relato historico: o acesso/Manter conectado/reconexao funcionaram na 0.10.10 relatada. Preservar esses resultados, validar os novos downloads e registrar etapa/codigo se FTP falhar. Retomada de upload permanece fora do escopo.

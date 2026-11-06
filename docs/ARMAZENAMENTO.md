@@ -60,3 +60,9 @@ O cartão FAT32 limita cada arquivo a menos de 4 GiB. ZIP64, exFAT, arquivos gra
 A camada específica de credenciais não usa substituição POSIX de arquivo por `rename` sobre destino existente. Ela verifica diretórios, grava um temporário exclusivo sem buffer stdio, trata escritas parciais/EINTR, chama fsync, fecha e relê. O anterior vai para backup livre antes da instalação do novo; falha posterior provoca tentativa de rollback, sem apagar as cópias de dados. Se o canônico estiver ausente depois de interrupção, a leitura recupera o backup anterior mais recente reconhecido.
 
 O login só é confirmado após verificar novamente o token final. Dados de autenticação não são apagados em `invalid_grant`, erros de rede ou falhas do SD. Os slots são descobertos no diretório e numerados em 64 bits, sem o limite artificial de 128. Backups não são expurgados automaticamente e ainda consomem espaço. Esquecer exige confirmação e remove apenas autorizações atribuídas à conta, preservando dados pessoais e a credencial compartilhada do aplicativo. Detalhes e limites em [Persistência Drive](GOOGLE_DRIVE_PERSISTENCIA.md).
+
+## Area tecnica de downloads
+
+`sdmc:/switch/switch-manager/downloads/` tem marcador de propriedade e subdiretorios por hash de conta, arquivo e destino. Cada tarefa tem transfer.bin, backups do journal e parciais por geracao. Nenhum token OAuth e salvo nesses registros. A versao anterior de um parcial e preservada se o remoto muda ou nao aceita Range.
+
+O destino final nao e usado como arquivo de trabalho. Publicacao so ocorre apos tamanho/CRC locais e versao remota conferidos, com movimento que recusa destino existente. Cancelar preserva parcial e journal, sem apagar arquivos pessoais. Recuperacao/confere propriedade e checksum; nao adota diretorio pessoal sem marcador. Conteudos de download podem ser privados: nao compartilhar a area tecnica ou inclui-la em artefatos.

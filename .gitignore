@@ -23,3 +23,7 @@ token.txt.tmp.*
 
 # Estado de conta e cópias com autorização OAuth
 drive-account.json*
+
+# Dados de transferencias locais nunca entram na distribuicao/Git.
+transfer.bin*
+partial-*

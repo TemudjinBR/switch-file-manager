@@ -5,6 +5,10 @@ namespace wifi {
 bool start(std::string& error);
 void stop();
 bool running();
+std::string diagnostics();
+#ifdef HOST_TEST
+void testFailure(const std::string& stage, int code);
+#endif
 std::string url();
 uint64_t bytesTransferred();
 unsigned filesCompleted();

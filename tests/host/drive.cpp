@@ -69,6 +69,9 @@ int main(int argc, char** argv) {
     } else if (command == "upload" && argc >= 5) {
         ok = gd::uploadFile(argv[4], "root", "upload.bin", nullptr);
     }
-    if (!ok) std::cerr << gd::lastError();
+    if (!ok) {
+        std::cerr << gd::lastError();
+        std::cout << "logged=" << gd::isLoggedIn() << " state=" << gd::connectionLabel() << '\n';
+    }
     return ok ? 0 : 1;
 }

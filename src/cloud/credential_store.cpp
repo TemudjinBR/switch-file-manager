@@ -223,6 +223,7 @@ const char* filename(File file) {
         case File::Token: return "token.txt";
         case File::LoginState: return "login.disabled";
         case File::Account: return "drive-account.json";
+        case File::Transfer: return "transfer.bin";
     }
     return "desconhecido";
 }

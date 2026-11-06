@@ -15,7 +15,7 @@ class NetworkLifecycleTests(unittest.TestCase):
         cls.build = tempfile.TemporaryDirectory(prefix='sfm-lifecycle-')
         cls.binary = Path(cls.build.name) / 'network-lifecycle'
         sources = ['tests/host/network_lifecycle.cpp', 'src/network/socket_runtime.cpp',
-                   'src/network/wifi_transfer.cpp', 'src/cloud/gdrive.cpp', 'src/security/oauth.cpp',
+                   'src/network/wifi_transfer.cpp', 'src/cloud/gdrive.cpp', 'src/cloud/download_manager.cpp', 'src/security/oauth.cpp',
                    'src/cloud/credential_store.cpp', 'src/diagnostics/logger.cpp']
         subprocess.run(['g++', '-std=c++17', '-O2', '-pthread', '-DHOST_TEST',
                         '-I' + str(ROOT / 'include'), '-I' + str(ROOT / 'tests/stubs'),
@@ -83,12 +83,50 @@ class NetworkLifecycleTests(unittest.TestCase):
     def test_failure_records_result_and_allows_retry(self):
         self.command('fail')
         error = self.command('ftp-on')
-        self.assertIn('Result=0x00000345', error[0])
+        self.assertIn('Result=0x00000345', '\n'.join(error))
         self.assertEqual(error[-1], 'init=1 exit=0 up=0')
         retry = self.command('ftp-on'); self.transfer(retry[0])
         self.assertEqual(retry[-1], 'init=2 exit=0 up=1')
 
     def test_drive_network_failure_is_recoverable(self):
         self.command('fail'); error = self.command('drive-on')
-        self.assertIn('drive=0', error[0]); self.assertIn('0x00000345', error[0])
+        self.assertIn('drive=0', error[0]); self.assertIn('0x00000345', '\n'.join(error))
         self.assertEqual(self.command('drive-on')[-1], 'init=2 exit=0 up=1')
+
+    def test_wifi_loss_return_and_ftp_restart_preserve_drive_owner(self):
+        self.command('drive-on')
+        self.command('network-off')
+        failed = self.command('ftp-on')
+        self.assertIn('etapa=wifi-ip', '\n'.join(failed))
+        self.assertEqual(failed[-1], 'init=1 exit=0 up=1')
+        self.command('network-on')
+        ftp = self.command('ftp-on'); self.transfer(ftp[0])
+        self.command('ftp-off')
+        self.command('network-off'); self.command('ftp-on')
+        self.command('network-on')
+        self.transfer(self.command('ftp-on')[0])
+
+    def test_ftp_initialization_stages_are_visible_and_retryable(self):
+        for stage in ('criar-socket', 'configurar-socket', 'vincular-2121', 'escutar-2121', 'consultar-porta', 'thread-servidor'):
+            with self.subTest(stage=stage):
+                self.command('fault-' + stage)
+                result = self.command('ftp-on')
+                diagnostic = '\n'.join(result)
+                self.assertIn('etapa=' + stage, diagnostic)
+                self.assertIn('pthread=11' if stage.startswith('thread-') else 'errno=11', diagnostic)
+                self.transfer(self.command('ftp-on')[0])
+                self.command('ftp-off')
+
+    def test_client_thread_failure_is_visible_and_server_can_accept_next_client(self):
+        ftp = self.command('ftp-on')
+        self.command('fault-thread-cliente')
+        target = urlparse(ftp[0])
+        client = ftplib.FTP()
+        try:
+            with self.assertRaises(ftplib.error_temp):
+                client.connect(target.hostname, target.port, timeout=5)
+        finally:
+            client.close()
+        diagnostic = '\n'.join(self.command('diagnostic'))
+        self.assertIn('etapa=thread-cliente pthread=11', diagnostic)
+        self.transfer(ftp[0])

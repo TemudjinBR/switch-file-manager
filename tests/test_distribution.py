@@ -13,10 +13,11 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from package import package, SD_PATH
 from validate_nro import validate
 from version import read_version
+from prepare import build_identity
 from inspect_installation import inspect
 
 
-def minimal_nro():
+def minimal_nro(root=ROOT):
     # Fixture de formato, não um programa executável; o teste opcional usa o NRO compilado.
     executable = bytearray(0x3000)
     executable[0x10:0x14] = b'NRO0'
@@ -26,7 +27,9 @@ def minimal_nro():
     nacp = bytearray(0x4000)
     title = b'Switch File Manager'
     nacp[:len(title)] = title
-    version = read_version().encode()
+    marker = ('SFM_BUILD:' + build_identity(root)).encode() + b'\0'
+    executable[0x100:0x100+len(marker)] = marker
+    version = read_version(root).encode()
     nacp[0x3060:0x3060 + len(version)] = version
     aset = bytearray(0x38)
     aset[:4] = b'ASET'
@@ -125,7 +128,7 @@ class DistributionTests(unittest.TestCase):
             (root / 'google.json').write_text(secrets[0])
             (root / 'token.txt').write_text(secrets[1])
             (root / 'drive-account.json.sfm-old-000').write_text(secrets[1])
-            nro = root / 'test.nro'; nro.write_bytes(minimal_nro())
+            nro = root / 'test.nro'; nro.write_bytes(minimal_nro(root))
             archive = package(nro, root / 'dist', root=root)
             with zipfile.ZipFile(archive) as z:
                 for name in z.namelist():

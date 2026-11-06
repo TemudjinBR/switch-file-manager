@@ -12,7 +12,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <atomic>
-#include <thread>
+#include <pthread.h>
 #include <string>
 #include <vector>
 #include <array>
@@ -41,7 +41,8 @@ struct ClientSlot {
     std::atomic<bool> busy{false};
     std::atomic<int> control{-1};
     std::atomic<int> data{-1};
-    std::thread thread;
+    pthread_t thread{};
+    bool joinable = false;
 };
 std::array<ClientSlot, MAX_CLIENTS> clients;
 std::atomic<unsigned> listingsDone{0}, connectedClients{0};
@@ -58,9 +59,45 @@ void event(const std::string& msg){
     sfm_diag::write("FTP", msg);
 }
 int listener = -1;
-std::thread worker;
+pthread_t worker{};
+bool workerJoinable = false;
+std::mutex lifecycleLock;
+std::string diagnostic = "etapa=parado";
 bool netReady = false;
 std::string address;
+
+#ifdef HOST_TEST
+std::mutex injectedLock;
+std::string injectedStage;
+int injectedCode = 0;
+#endif
+bool before(const char* stage) {
+#ifdef HOST_TEST
+    std::lock_guard<std::mutex> guard(injectedLock);
+    if (injectedStage == stage) { errno = injectedCode; injectedStage.clear(); return false; }
+#else
+    (void)stage;
+#endif
+    return true;
+}
+bool failure(std::string& error, const char* stage, int code) {
+    diagnostic = std::string("etapa=") + stage + (strncmp(stage, "thread-", 7) == 0 ? "\npthread=" : "\nerrno=") + std::to_string(code) + " (" + strerror(code) + ")";
+    error = diagnostic;
+    sfm_diag::write("FTP", diagnostic);
+    return false;
+}
+void join(pthread_t& thread, bool& joinable) { if (joinable) { pthread_join(thread, nullptr); joinable = false; } }
+int spawn(pthread_t& thread, void* (*entry)(void*), void* arg, const char* stage) {
+    if (!before(stage)) return errno;
+    pthread_attr_t attr;
+    int code = pthread_attr_init(&attr);
+    if (code) return code;
+    // Buffers de transferencia sao vetores no heap; pilha menor reduz pressao no modo applet.
+    code = pthread_attr_setstacksize(&attr, 256 * 1024);
+    if (!code) code = pthread_create(&thread, &attr, entry, arg);
+    pthread_attr_destroy(&attr);
+    return code;
+}
 
 bool writeAll(int fd, const char* p, size_t n) {
     while (n && active) {
@@ -477,6 +514,10 @@ void serve() {
         fd_set sockets; FD_ZERO(&sockets); FD_SET(listener, &sockets);
         timeval tv{0, 200000};
         int ready = select(listener + 1, &sockets, nullptr, nullptr, &tv);
+        if (ready < 0 && errno != EINTR) {
+            event("etapa=escutar-select errno=" + std::to_string(errno));
+            active = false; break;
+        }
         if (ready > 0 && active) {
             int fd = accept(listener, nullptr, nullptr);
             if(fd<0)continue;
@@ -487,9 +528,18 @@ void serve() {
                 send(fd,msg,strlen(msg),0);close(fd);continue;
             }
             ClientSlot& slot=clients[freeSlot];
-            if(slot.thread.joinable())slot.thread.join();
+            join(slot.thread, slot.joinable);
             slot.busy=true;slot.control=fd;
-            slot.thread=std::thread([fd,freeSlot](){session(fd,freeSlot);clients[freeSlot].busy=false;});
+            int code = spawn(slot.thread, [](void* arg) -> void* {
+                auto index = static_cast<size_t>(reinterpret_cast<uintptr_t>(arg));
+                session(clients[index].control.load(), int(index)); clients[index].busy=false;
+                return nullptr;
+            }, reinterpret_cast<void*>(static_cast<uintptr_t>(freeSlot)), "thread-cliente");
+            if (code) {
+                slot.busy=false; slot.control=-1;
+                const char* message="421 Thread unavailable\r\n"; send(fd,message,strlen(message),0); close(fd);
+                event("etapa=thread-cliente pthread=" + std::to_string(code));
+            } else slot.joinable = true;
         }
     }
 }
@@ -504,75 +554,76 @@ unsigned activeClients(){return connectedClients.load();}
 unsigned directoryListings(){return listingsDone.load();}
 unsigned fileChanges(){return changesDone.load();}
 std::string lastActivity(){std::lock_guard<std::mutex> guard(eventLock);return lastEvent;}
+std::string diagnostics() { return diagnostic + "\nUltimo evento: " + lastActivity() + "\n" + sfm::net::diagnostics(); }
+#ifdef HOST_TEST
+void testFailure(const std::string& stage, int code) { std::lock_guard<std::mutex> guard(injectedLock); injectedStage = stage; injectedCode = code; }
+#endif
 bool start(std::string& error) {
+    std::lock_guard<std::mutex> guard(lifecycleLock);
     error.clear();
     if (active) return true;
+    // Limpar somente nossos descritores de uma execucao anterior ja encerrada.
+    join(worker, workerJoinable);
+    for (auto& slot : clients) {
+        int fd = slot.control.load(); if (fd >= 0) shutdown(fd, SHUT_RDWR);
+        fd = slot.data.load(); if (fd >= 0) shutdown(fd, SHUT_RDWR);
+    }
+    for (auto& slot : clients) join(slot.thread, slot.joinable);
+    if (listener >= 0) { close(listener); listener = -1; }
     if (!netReady) {
-        if (!sfm::net::acquire(sfm::net::Client::Ftp, error)) return false;
+        if (!sfm::net::acquire(sfm::net::Client::Ftp, error)) { diagnostic = error; return false; }
         netReady = true;
     }
-    listener = socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0) { error = "Falha ao criar o socket FTP"; sfm::net::release(sfm::net::Client::Ftp); netReady = false; return false; }
-    int yes = 1; setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    #ifdef HOST_TEST
+    auto abort = [&]() {
+        if (listener >= 0) { close(listener); listener = -1; }
+        sfm::net::release(sfm::net::Client::Ftp); netReady = false;
+        return false;
+    };
+    unsigned ip = 0;
+    if (!sfm::net::localAddress(ip, error)) { diagnostic = error; return abort(); }
+    listener = before("criar-socket") ? socket(AF_INET, SOCK_STREAM, 0) : -1;
+    if (listener < 0) { failure(error, "criar-socket", errno); return abort(); }
+    int yes = 1;
+    if (!before("configurar-socket") || setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes) != 0) {
+        failure(error, "configurar-socket", errno); return abort();
+    }
+    sockaddr_in addr{}; addr.sin_family = AF_INET;
+#ifdef HOST_TEST
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 #else
     addr.sin_addr.s_addr = INADDR_ANY;
 #endif
     addr.sin_port = htons(PORT);
-    if (bind(listener, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(listener, 4) != 0) {
-        close(listener); listener = -1;
-        error = "Porta FTP 2121 indisponivel";
-        sfm::net::release(sfm::net::Client::Ftp); netReady = false; return false;
+    if (!before("vincular-2121") || bind(listener, (sockaddr*)&addr, sizeof addr) != 0) {
+        failure(error, "vincular-2121", errno); return abort();
     }
-#ifdef HOST_TEST
-    sockaddr_in local{};
-    local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    bool ipOK = true;
-#else
-    int probe = socket(AF_INET, SOCK_DGRAM, 0);
-    sockaddr_in local{};
-    bool ipOK = false;
-    if (probe >= 0) {
-        sockaddr_in remote{};
-        remote.sin_family = AF_INET;
-        remote.sin_port = htons(53);
-        inet_pton(AF_INET, "1.1.1.1", &remote.sin_addr);
-        if (connect(probe, (sockaddr*)&remote, sizeof(remote)) == 0) {
-            socklen_t size = sizeof(local);
-            ipOK = getsockname(probe, (sockaddr*)&local, &size) == 0 && local.sin_addr.s_addr != INADDR_ANY;
-        }
-        close(probe);
+    if (!before("escutar-2121") || listen(listener, MAX_CLIENTS) != 0) {
+        failure(error, "escutar-2121", errno); return abort();
     }
-#endif
-    if (!ipOK) {
-        close(listener); listener = -1;
-        sfm::net::release(sfm::net::Client::Ftp); netReady = false;
-        error = "Nao foi possivel detectar o IP do Wi-Fi";
-        return false;
-    }
-    sockaddr_in bound{}; socklen_t boundSize = sizeof(bound);
-    if (getsockname(listener, (sockaddr*)&bound, &boundSize) != 0) {
-        close(listener); listener = -1; sfm::net::release(sfm::net::Client::Ftp); netReady = false;
-        error = "Falha ao consultar porta FTP"; return false;
+    sockaddr_in local{}; local.sin_addr.s_addr = ip;
+    sockaddr_in bound{}; socklen_t boundSize = sizeof bound;
+    if (!before("consultar-porta") || getsockname(listener, (sockaddr*)&bound, &boundSize) != 0) {
+        failure(error, "consultar-porta", errno); return abort();
     }
     address = "ftp://" + std::string(inet_ntoa(local.sin_addr)) + ":" + std::to_string(ntohs(bound.sin_port));
     transfersDone = 0; totalBytes = 0; transferBytes = 0;listingsDone=0;connectedClients=0;changesDone=0;
     event("Aguardando conexao");
     active = true;
-    worker = std::thread(serve);
+    int code = spawn(worker, [](void*) -> void* { serve(); return nullptr; }, nullptr, "thread-servidor");
+    if (code) { active = false; failure(error, "thread-servidor", code); return abort(); }
+    workerJoinable = true;
+    diagnostic = "etapa=ativo porta=2121";
     return true;
 }
 void stop() {
+    std::lock_guard<std::mutex> guard(lifecycleLock);
     active = false;
-    if (worker.joinable()) worker.join();
+    join(worker, workerJoinable);
     for(auto& slot:clients){
         int fd=slot.control.load();if(fd>=0)shutdown(fd,SHUT_RDWR);
         fd=slot.data.load();if(fd>=0)shutdown(fd,SHUT_RDWR);
     }
-    for(auto& slot:clients)if(slot.thread.joinable())slot.thread.join();
+    for(auto& slot:clients) join(slot.thread, slot.joinable);
     if (listener >= 0) { close(listener); listener = -1; }
     if (netReady) { sfm::net::release(sfm::net::Client::Ftp); netReady = false; }
     address.clear();

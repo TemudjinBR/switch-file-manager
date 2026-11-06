@@ -1,6 +1,6 @@
 # Documentação do Switch File Manager
 
-A apresentação oficial está no [README principal](../README.md). A revisão do PR #1 usa **0.10.10 experimental**; a última Release pública verificada em 05/11/2026 é **v0.10.7**. Recursos implementados, resultados no host e validação física são classificados separadamente.
+A apresentação oficial está no [README principal](../README.md). A revisão do PR #1 usa **0.10.11 experimental**; a última Release pública verificada em 05/11/2026 é **v0.10.7**. Recursos implementados, resultados no host e validação física são classificados separadamente.
 
 ## Para usar o aplicativo
 
@@ -49,3 +49,11 @@ Para contribuir com documentação, verifique links e referências com `python3 
 - [Validação anterior da Missão 3](historico/VALIDACAO_MISSAO_3.md).
 
 O [relatório atual](RELATORIO_VALIDACAO.md) separa diagnóstico, implementação, automação e limites físicos.
+
+## Missao 3.2
+
+- [Downloads recuperaveis](DOWNLOADS_DRIVE.md).
+- [Checklist fisico do Switch Lite](VALIDACAO_SWITCH_LITE_3_2.md).
+- [Historico da Missao 3.1](historico/VALIDACAO_MISSAO_3_1.md).
+
+Os resultados fisicos recebidos na Missao 3.2 impedem considerar a 3.1 aprovada para producao.

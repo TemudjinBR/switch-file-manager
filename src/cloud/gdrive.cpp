@@ -8,6 +8,7 @@
 #include "security/oauth.h"
 #include <set>
 #include "network/socket_runtime.h"
+#include "network/io_wait.h"
 #include "core/paths.h"
 #include "cloud/credential_store.h"
 #include "sfm_diag.h"
@@ -38,6 +39,7 @@ int testLoginPort = 8080;
 #endif
 
 static std::string g_err;
+static thread_local Progress* g_downloadFeedback = nullptr;
 static ErrorSource g_errorSource = ErrorSource::None;
 static ConnectionState g_connectionState = ConnectionState::AuthorizationRequired;
 std::string lastError() { return g_err; }
@@ -376,6 +378,7 @@ struct Conn {
     ~Conn() { closeAll(); free(buf); }
 
     bool connectTo(const std::string& host, int port, bool tls) {
+        if (!buf) { setErr("Falha de memoria no buffer de rede."); return false; }
         addrinfo hints;
         memset(&hints, 0, sizeof hints);
         hints.ai_family = AF_INET;
@@ -390,7 +393,7 @@ struct Conn {
         fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (fd < 0) { freeaddrinfo(res); setErr("Falha ao criar o socket."); return false; }
         struct timeval tv;
-        tv.tv_sec = 30;
+        tv.tv_sec = g_downloadFeedback ? 5 : 30;
         tv.tv_usec = 0;
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
@@ -415,7 +418,12 @@ struct Conn {
         rc = sslConnectionSetHostName(&ssl, host.c_str(), (u32)host.size());
         if (R_FAILED(rc)) { setErr("Falha ao configurar o servidor seguro."); closeAll(); return false; }
         u32 sz = 0, certs = 0;
-        rc = sslConnectionDoHandshake(&ssl, &sz, &certs, NULL, 0);
+        if (g_downloadFeedback) {
+            rc = sslConnectionSetIoMode(&ssl, SslIoMode_NonBlocking);
+            if (R_FAILED(rc)) { setErr("Falha ao configurar SSL nao bloqueante."); closeAll(); return false; }
+            rc = sfm::net::waitIo([&] { return sslConnectionDoHandshake(&ssl, &sz, &certs, NULL, 0); },
+                [&] { return g_downloadFeedback->tick(0) && g_downloadFeedback->action() == downloads::Action::Continue; }, 15000);
+        } else rc = sslConnectionDoHandshake(&ssl, &sz, &certs, NULL, 0);
         if (R_FAILED(rc)) {
             char b[96];
             snprintf(b, sizeof b, "Falha na conexão segura (código 0x%X). Verifique data/hora e internet.", (unsigned)rc);
@@ -445,7 +453,10 @@ struct Conn {
 #else
         if (usingTls) {
             u32 out = 0;
-            Result rc = sslConnectionRead(&ssl, b, (u32)n, &out);
+            Result rc = g_downloadFeedback ? sfm::net::waitIo([&] { return sslConnectionRead(&ssl, b, (u32)n, &out); },
+                [&] { return g_downloadFeedback->tick(0) && g_downloadFeedback->action() == downloads::Action::Continue; }, 5000)
+                : sslConnectionRead(&ssl, b, (u32)n, &out);
+            if (g_downloadFeedback && R_FAILED(rc)) sfm_diag::write("DRIVE_DOWNLOAD", "etapa=ssl-ler Result=" + std::to_string(unsigned(rc)));
             if (R_FAILED(rc)) return -1;
             return (long)out;
         }
@@ -462,7 +473,9 @@ struct Conn {
 #else
             if (usingTls) {
                 u32 out = 0;
-                Result rc = sslConnectionWrite(&ssl, p, (u32)std::min<size_t>(n, 1 << 20), &out);
+                auto write = [&] { return sslConnectionWrite(&ssl, p, (u32)std::min<size_t>(n, 1 << 20), &out); };
+                Result rc = g_downloadFeedback ? sfm::net::waitIo(write,
+                    [&] { return g_downloadFeedback->tick(0) && g_downloadFeedback->action() == downloads::Action::Continue; }, 5000) : write();
                 w = R_FAILED(rc) ? -1 : (long)out;
             } else w = send(fd, p, n, 0);
 #endif
@@ -475,6 +488,7 @@ struct Conn {
 
     bool fill() {
         if (bpos < blen) return true;
+        if (g_downloadFeedback && (!g_downloadFeedback->tick(0) || g_downloadFeedback->action() != downloads::Action::Continue)) return false;
         long n = rawRead(buf, BS);
         if (n <= 0) return false;
         bpos = 0;
@@ -1087,71 +1101,139 @@ bool listFolder(const std::string& folderId, std::vector<Item>& out) {
     return true;
 }
 
-struct FileSink : Sink {
-    FILE* f = nullptr;
-    Progress* pr = nullptr;
-    bool toFile = false;
-    bool cancelled = false;
-    uint64_t received = 0, limit = 0;
-    std::string errBody;
-    void onHeaders(const Resp& r) override { toFile = (r.status == 200 || r.status == 206); }
-    bool put(const uint8_t* p, size_t n) override {
-        if (!toFile) {
-            if (errBody.size() < 65536) errBody.append((const char*)p, n);
-            return true;
-        }
-        if (n > limit - received) { setErr("Resposta maior que o arquivo esperado."); return false; }
-        if (fwrite(p, 1, n, f) != n) {
-            setErr("Falha ao gravar no cartão SD (cheio, ou cartão FAT32 com limite de 4 GB por arquivo).");
+namespace {
+std::string downloadArea() { return configDir() + "/downloads"; }
+std::string downloadOwner() {
+    return sfm::oauth::challenge(g_creds.id + "\n" + (g_account.permission.empty() ? g_account.key : g_account.permission));
+}
+void downloadError(const downloads::Error& error) {
+    std::string message = "etapa=" + error.stage + "; codigo=" + std::to_string(error.code) + ". " + error.message;
+    ConnectionState previous = g_connectionState;
+    setErr((error.kind == downloads::Kind::Storage ? "SD: " : "Download: ") + message,
+           error.kind == downloads::Kind::Storage ? ErrorSource::Storage :
+           error.kind == downloads::Kind::Network ? ErrorSource::Network : ErrorSource::Protocol);
+    if (error.kind == downloads::Kind::Protocol || error.kind == downloads::Kind::Authorization) g_connectionState = previous;
+}
+struct DriveDownloadTransport : downloads::Transport {
+    bool inspect(const std::string& id, downloads::Remote& remote, downloads::Error& error) override {
+        // Recuperar somente uma autorizacao da transferencia ja iniciada, nunca abrir novo consentimento.
+        if (!g_loginConfirmed && !g_refresh.empty() && !g_changing && g_errorSource == ErrorSource::Network) refreshToken();
+        Resp response; StrSink body;
+        std::string path = "/drive/v3/files/" + urlEncode(id) + "?fields=id,size,version,md5Checksum,modifiedTime&supportsAllDrives=true";
+        if (!apiCall("GET", API_HOST, path, {}, nullptr, nullptr, response, body)) {
+            error = {g_errorSource == ErrorSource::Network ? downloads::Kind::Network :
+                     g_errorSource == ErrorSource::Storage ? downloads::Kind::Storage : downloads::Kind::Authorization,
+                     "consultar-versao-remota", 0, g_errorSource == ErrorSource::Storage ? g_err : "Nao foi possivel consultar o Drive; parcial preservado"};
             return false;
         }
-        received += n;
-        if (pr && !pr->tick(n)) { cancelled = true; setErr("Cancelado."); return false; }
+        if (response.status != 200) {
+            error = {response.status == 429 || response.status >= 500 ? downloads::Kind::Network : downloads::Kind::Authorization,
+                     "metadados-http", response.status, "Drive recusou metadados; parcial preservado"}; return false;
+        }
+        JV value;
+        if (!jparse(body.s, value) || !value.get("id") || value.get("id")->t != JV::Str || value.str("id") != id) {
+            error = {downloads::Kind::Protocol, "metadados-identidade", 0, "Resposta de identidade invalida"}; return false;
+        }
+        std::string size = value.str("size"), version = value.str("version");
+        if (size.empty() || size.find_first_not_of("0123456789") != std::string::npos || version.empty()) {
+            error = {downloads::Kind::Protocol, "metadados-versao", 0, "Sem tamanho/versao verificavel"}; return false;
+        }
+        errno = 0; auto count = strtoull(size.c_str(), nullptr, 10);
+        if (errno == ERANGE) { error = {downloads::Kind::Protocol, "metadados-tamanho", EOVERFLOW, "Tamanho invalido"}; return false; }
+        remote.id = id; remote.size = count;
+        remote.version = version + "|" + value.str("md5Checksum") + "|" + value.str("modifiedTime");
         return true;
     }
-};
-
-bool downloadFile(const Item& it, const std::string& dstPath, Progress* pr) {
-    int fd = open(dstPath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
-    if (fd < 0) { setErr("Não foi possível criar o arquivo no cartão SD (destino existente ou indisponível)."); return false; }
-    FILE* f = fdopen(fd, "wb");
-    if (!f) { close(fd); remove(dstPath.c_str()); setErr("Falha ao abrir destino do download."); return false; }
-    bool ok = true;
-    const uint64_t CH = 16ull << 20;
-    uint64_t pos = 0;
-    while (ok && pos < it.size) {
-        uint64_t end = std::min<uint64_t>(pos + CH, it.size) - 1;
-        std::string path = "/drive/v3/files/" + urlEncode(it.id) + "?alt=media&supportsAllDrives=true";
-        std::vector<std::string> h = {"Range: bytes=" + std::to_string(pos) + "-" + std::to_string(end)};
-        bool done = false;
-        for (int attempt = 0; attempt < 3 && !done; attempt++) {
-            if (fseeko(f, (off_t)pos, SEEK_SET) != 0) { setErr("Falha ao posicionar destino do download."); ok = false; break; }
-            FileSink fs;
-            fs.limit = it.size - pos;
-            fs.f = f;
-            fs.pr = pr;
-            Resp r;
-            if (!apiCall("GET", API_HOST, path, h, nullptr, nullptr, r, fs)) {
-                if (fs.cancelled) { ok = false; break; }
-                continue;
+    downloads::Fetch fetch(const downloads::Remote& remote, uint64_t first, uint64_t last,
+                          const downloads::Writer& write, downloads::Error& error) override {
+        struct ChunkSink : Sink {
+            downloads::Fetch result;
+            downloads::Writer writer;
+            uint64_t first, last, total, expected = 0, received = 0;
+            std::string expectedTag;
+            void onHeaders(const Resp& r) override {
+                result = {}; result.http = r.status; received = 0;
+                auto tag = r.h.find("etag");
+                if (tag != r.h.end() && tag->second.compare(0, 2, "W/") != 0) result.mediaTag = tag->second;
+                if (r.status == 200 && first == 0) { result.headersValid = true; expected = total; }
+                else if (r.status == 206) {
+                    auto range = r.h.find("content-range");
+                    unsigned long long begin = 0, end = 0, size = 0; int used = 0;
+                    if (range != r.h.end() && sscanf(range->second.c_str(), "bytes %llu-%llu/%llu%n", &begin, &end, &size, &used) == 3 &&
+                        size_t(used) == range->second.size() && begin == first && end >= begin && end <= last && size == total) {
+                        expected = end - begin + 1; result.headersValid = true;
+                    } else result.retryable = false;
+                } else if ((r.status == 200 && first > 0) || r.status == 412 || r.status == 416) result.restart = true;
+                else result.retryable = r.status == 401 || r.status == 429 || r.status >= 500;
+                if (first && !expectedTag.empty() && !result.mediaTag.empty() && result.mediaTag != expectedTag) {
+                    result.headersValid = false; result.restart = true;
+                }
+                auto length = r.h.find("content-length");
+                if (result.headersValid && length != r.h.end() && (length->second.empty() || length->second.find_first_not_of("0123456789") != std::string::npos || strtoull(length->second.c_str(), nullptr, 10) != expected)) {
+                    result.headersValid = false; result.retryable = false;
+                }
             }
-            if (r.status == 206) {
-                const std::string expectedRange = "bytes " + std::to_string(pos) + "-" + std::to_string(end) + "/" + std::to_string(it.size);
-                if (fs.received == end - pos + 1 && r.h["content-range"] == expectedRange) {
-                    done = true; pos = end + 1;
-                } else setErr("Download incompleto ou intervalo de bytes inválido.");
+            bool put(const uint8_t* bytes, size_t size) override {
+                if (!result.headersValid) return false; // nao gravar erros HTTP/intervalos indevidos
+                if (size > expected - received) { result.headersValid = false; result.retryable = false; return false; }
+                if (!writer(bytes, size)) return false;
+                received += size; return true;
             }
-            else if (r.status == 200 && pos == 0 && fs.received == it.size) { done = true; pos = it.size; }
-            else if (r.status == 416) { setErr("O servidor recusou o intervalo do download."); ok = false; break; }
-            else if (r.status >= 500 || r.status == 429) continue;
-            else { setErr(apiErrorText(fs.errBody, r.status)); ok = false; break; }
+        } sink;
+        sink.writer = write; sink.first = first; sink.last = last; sink.total = remote.size; sink.expectedTag = remote.mediaTag;
+        std::vector<std::string> headers = {"Range: bytes=" + std::to_string(first) + "-" + std::to_string(last)};
+        if (first && !remote.mediaTag.empty()) headers.push_back("If-Range: " + remote.mediaTag);
+        Resp response;
+        bool ok = apiCall("GET", API_HOST, "/drive/v3/files/" + urlEncode(remote.id) + "?alt=media&supportsAllDrives=true", headers, nullptr, nullptr, response, sink);
+        sink.result.complete = ok && sink.result.headersValid && sink.received == sink.expected;
+        if (!sink.result.complete) {
+            auto kind = sink.result.retryable ? downloads::Kind::Network : downloads::Kind::Protocol;
+            if (g_errorSource == ErrorSource::Google || g_connectionState == ConnectionState::InvalidAuthorization) kind = downloads::Kind::Authorization;
+            error = {kind, sink.result.headersValid ? "corpo-interrompido" : "resposta-intervalo", response.status,
+                     "Download interrompido; checkpoint preservado"};
         }
-        if (ok && !done) { if (g_err.empty()) setErr("Falha ao baixar o arquivo."); ok = false; }
+        return sink.result;
     }
-    if (ok && (fflush(f) != 0 || fsync(fileno(f)) != 0)) { setErr("Falha ao finalizar a gravação do download."); ok = false; }
-    if (fclose(f) != 0) { setErr("Falha ao fechar o download."); ok = false; }
-    if (!ok && remove(dstPath.c_str()) != 0) setErr("Falha no download; arquivo parcial permaneceu no destino.");
+};
+struct DownloadObserver : downloads::Observer {
+    Progress* progress;
+    explicit DownloadObserver(Progress* value) : progress(value) {}
+    bool bytes(uint64_t n) override { return !progress || progress->tick(n); }
+    downloads::Action action() override { return progress ? progress->action() : downloads::Action::Continue; }
+    void update(const downloads::Status& status) override { if (progress) progress->transfer(status); }
+};
+}
+bool downloadFile(const Item& it, const std::string& dstPath, Progress* progress) {
+    if (!ensureToken()) return false;
+    DriveDownloadTransport transport; DownloadObserver observer(progress); downloads::Error error;
+    downloads::Policy policy;
+#ifdef HOST_TEST
+    policy.baseDelayMs = 1; policy.maxDelayMs = 4;
+#endif
+    Progress* previous = g_downloadFeedback; g_downloadFeedback = progress;
+    bool ok = downloads::run(downloadArea(), downloadOwner(), it.id, dstPath, transport, &observer, error, policy);
+    g_downloadFeedback = previous;
+    if (!ok) downloadError(error); else { clearError(); g_connectionState = ConnectionState::Connected; }
     return ok;
+}
+bool pendingDownloads(std::vector<downloads::Job>& jobs, unsigned& invalid) {
+    if (!loadCreds() || !loadAccount()) return false;
+    downloads::Error error;
+    if (!downloads::list(downloadArea(), downloadOwner(), jobs, invalid, error)) { downloadError(error); return false; }
+    return true;
+}
+bool resumeDownload(const downloads::Job& job, Progress* progress) {
+    if (!netInit()) return false;
+    if (!isLoggedIn() && !reconnectSavedLogin()) return false;
+    if (job.owner != downloadOwner()) { setErr("Esta tarefa pertence a outra conta."); return false; }
+    Item item; item.id = job.id; item.size = job.remote.size;
+    return downloadFile(item, job.destination, progress);
+}
+bool cancelDownload(const downloads::Job& job) {
+    if (!loadAccount()) return false;
+    downloads::Error error;
+    if (!downloads::cancel(downloadArea(), downloadOwner(), job, error)) { downloadError(error); return false; }
+    return true;
 }
 
 bool createFolder(const std::string& parentId, const std::string& name, std::string& newId) {

@@ -1,6 +1,6 @@
 # Google Drive — contas e autorização experimental
 
-**Estado: experimental na 0.10.10.** Navegação, transferências e gerenciamento de contas estão implementados e cobertos por API fictícia. SSL, autorização Google real e UI no Switch Lite ainda exigem validação física. Não se solicita senha Google no aplicativo, em logs ou ao proprietário.
+**Estado: experimental na 0.10.11.** Navegação, transferências e gerenciamento de contas estão implementados e cobertos por API fictícia. O proprietario confirmou acesso Drive, Manter conectado e desconectar/reconectar no Lite com 0.10.10. A nova implementacao de downloads ainda exige validacao fisica; nao se extrapola essa aprovacao para todo o Drive. Não se solicita senha Google no aplicativo, em logs ou ao proprietário.
 
 ## Falha de persistência relatada no Switch Lite
 
@@ -67,3 +67,11 @@ Listagem/paginação, download/upload de arquivos e árvores SD↔Drive, criaç�
 - **Versão inesperada:** consulte [NACP e instalação](VERSAO_E_INSTALACAO.md).
 
 Logs em `sdmc:/switch/Switch File Manager/logs/sfm.log`. Nunca enviar tokens, JSON de credencial, códigos ou backups como diagnóstico.
+
+## Downloads na Missao 3.2
+
+A interrupcao por perda de internet falhou no teste fisico da 0.10.10. O codigo anterior removia o parcial ao esgotar tres tentativas imediatas. Na 0.10.11, o destino final e separado dos parciais: checkpoints locais persistem por tarefa/conta e sao conferidos antes de retomar. A versao remota e consultada antes de acrescentar dados ou publicar; mudanca de versao reinicia em outro parcial, sem juntar conteudos.
+
+A UI oferece X/Pausar, X/Continuar e B/Cancelar, tambem por toque. Estados, bytes, velocidade, espera e tentativas aparecem na sobreposicao. Acoes → Downloads do Drive lista tarefas desta conta para recuperacao apos reinicio. Cancelar mantem o parcial; nao ha retomada automatica de tarefa cancelada. Ver [contrato completo](DOWNLOADS_DRIVE.md).
+
+Essas mudancas nao implementam retomada de upload nem alteram a autorizacao aprovada. Tokens/credenciais sao preservados; renovacao usa o fluxo existente.

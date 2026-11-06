@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include "cloud/download_manager.h"
 
 namespace gd {
 
@@ -16,6 +17,8 @@ struct Item {
 // Recebe os bytes enviados/recebidos. Retorne false para cancelar.
 struct Progress {
     virtual bool tick(uint64_t bytes) = 0;
+    virtual downloads::Action action() { return downloads::Action::Continue; }
+    virtual void transfer(const downloads::Status&) {}
     virtual ~Progress() {}
 };
 
@@ -49,6 +52,9 @@ void loginServerStop();
 // ---- Drive
 bool listFolder(const std::string& folderId, std::vector<Item>& out);
 bool downloadFile(const Item& it, const std::string& dstPath, Progress* pr);
+bool pendingDownloads(std::vector<downloads::Job>& jobs, unsigned& invalid);
+bool resumeDownload(const downloads::Job& job, Progress* progress);
+bool cancelDownload(const downloads::Job& job);
 bool uploadFile(const std::string& srcPath, const std::string& parentId, const std::string& name, Progress* pr);
 bool createFolder(const std::string& parentId, const std::string& name, std::string& newId);
 bool renameItem(const std::string& id, const std::string& newName);

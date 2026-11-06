@@ -3,6 +3,7 @@
 
 #include <switch.h>
 #include "version.h"
+#include "diagnostics/build_info.h"
 #include "sfm_diag.h" // SFM_DIAG_0107
 #include <stdint.h>
 #include <dirent.h>
@@ -36,6 +37,7 @@ using namespace sfm::ui;
 
 static PadState pad;
 static bool g_quit = false, g_cancel = false;
+static std::string g_executable = "indisponivel";
 static u64 g_free = 0, g_total = 0;
 
 // ---------------------------------------------------------------- utilidades
@@ -313,7 +315,8 @@ static void drawMain() {
 
     fillRound(20, 15, 6, 35, 3, C_RED);
     fillRound(29, 15, 6, 35, 3, C_ACC);
-    drawText(fL, "Switch File Manager", 47, 14, C_TXT);
+    drawText(fL, "Switch File Manager v" SFM_VERSION, 47, 14, C_TXT);
+    drawText(fS, std::string("Build ") + SFM_BUILD_ID, 47, 47, C_DIM, 350);
     if (wifi::running()) {
         std::string ftpStatus = "FTP ATIVO | " +
             std::to_string(wifi::activeClients()) + " clientes | " +
@@ -423,11 +426,11 @@ static int modal(const std::string& title, const std::string& text, const std::v
         }
 
         // SFM_FTP_STATUS_0105: atualização visual em tempo real.
-        if (title == "Servidor FTP ativo" && wifi::running()) {
+        if (title == "Servidor FTP ativo") {
             std::string last = wifi::lastActivity();
             if (last.size() > 62) last = last.substr(0, 59) + "...";
             lines = splitLines(
-                "Endereco FTP:\n" + wifi::url() +
+                (wifi::running() ? "Endereco FTP:\n" + wifi::url() : std::string("FTP interrompido. Veja o diagnostico.")) +
                 "\nClientes conectados: " + std::to_string(wifi::activeClients()) +
                 "\nArquivos concluidos: " + std::to_string(wifi::filesCompleted()) +
                 "\nTotal transferido: " + fmtSize(wifi::bytesTransferred()) +
@@ -473,6 +476,9 @@ static u64 g_pDone = 0, g_pTotal = 0, g_lastUI = 0;
 static u64 g_pStartMs = 0;
 static u64 g_pFilesDone = 0, g_pFilesTotal = 0;
 static bool g_pCountFiles = false;
+static bool g_dlActive = false, g_dlPaused = false;
+static gd::downloads::Status g_dlStatus;
+static u64 g_dlBase = 0, g_dlOtherTotal = 0;
 static u64 progressNowMs() { return armTicksToNs(armGetSystemTick()) / 1000000ULL; }
 static std::string formatDuration(u64 seconds) {
     char b[32];
@@ -495,7 +501,7 @@ static void countLocalFiles(const std::string& path) {
 
 static void drawProgressOverlay() {
     fillRect(0, 0, W, H, Col{0, 0, 0, 175});
-    int bw = 700, bh = 260, bx = (W - bw) / 2, by = (H - bh) / 2;
+    int bw = 700, bh = g_dlActive ? 350 : 260, bx = (W - bw) / 2, by = (H - bh) / 2;
     fillRound(bx, by, bw, bh, 18, C_PANEL);
     drawText(fL, g_pTitle, bx + 30, by + 24, C_TXT);
     drawText(fS, g_pName, bx + 30, by + 80, C_DIM, bw - 60);
@@ -514,10 +520,11 @@ static void drawProgressOverlay() {
         std::string files = "Arquivos: " + std::to_string(g_pFilesDone) + " / " + std::to_string(g_pFilesTotal);
         drawText(fS, files, bx + 30, by + 184, C_DIM);
     }
-    if (g_pStartMs > 0 && g_pDone > 0) {
+    if (g_pStartMs > 0 && (g_dlActive ? g_dlStatus.networkBytes : g_pDone) > 0) {
         u64 elapsed = progressNowMs() - g_pStartMs;
         if (elapsed >= 1000) {
-            double bytesPerSecond = (double)g_pDone * 1000.0 / (double)elapsed;
+            double bytesPerSecond = double(g_dlActive ? g_dlStatus.networkBytes : g_pDone) * 1000.0 / double(elapsed);
+            if (g_dlActive && g_dlStatus.state != gd::downloads::State::Downloading) bytesPerSecond = 0;
             std::string stats = "Velocidade media: " + fmtSize((u64)bytesPerSecond) + "/s";
             if (g_pTotal > g_pDone && bytesPerSecond >= 1024.0) {
                 u64 eta = (u64)((double)(g_pTotal - g_pDone) / bytesPerSecond);
@@ -526,14 +533,34 @@ static void drawProgressOverlay() {
             drawText(fS, stats, bx + 30, by + 208, C_DIM, bw - 60);
         }
     }
-    drawText(fS, "B: solicitar cancelamento", bx + bw - 30, by + 184, C_DIM, 0, 1);
+    if (g_dlActive) {
+        std::string state = gd::downloads::label(g_dlStatus.state);
+        state += " | tentativa " + std::to_string(g_dlStatus.attempt) + "/" + std::to_string(g_dlStatus.maxAttempts);
+        if (g_dlStatus.delayMs) state += " | espera " + std::to_string((g_dlStatus.delayMs + 999) / 1000) + " s";
+        drawText(fS, state, bx + 30, by + 234, C_TXT, bw - 60);
+        drawText(fS, g_dlStatus.reason.empty() ? "Rede: " + fmtSize(g_dlStatus.networkBytes) : g_dlStatus.reason, bx + 30, by + 260, C_DIM, bw - 60);
+        fillRound(bx + 30, by + 296, 300, 42, 8, C_PAN2);
+        fillRound(bx + 370, by + 296, 300, 42, 8, C_PAN2);
+        drawText(fS, g_dlPaused ? "X  Continuar" : "X  Pausar", bx + 180, by + 305, C_TXT, 0, 2);
+        drawText(fS, "B  Cancelar", bx + 520, by + 305, C_TXT, 0, 2);
+    } else drawText(fS, "B: solicitar cancelamento", bx + bw - 30, by + 184, C_DIM, 0, 1);
 }
 
 static void tickProgress(bool force = false) {
     u64 now = progressNowMs();
     // Capturar B em toda chamada, mesmo quando o desenho da tela é limitado a 80 ms.
     padUpdate(&pad);
-    if (padGetButtonsDown(&pad) & HidNpadButton_B) g_cancel = true;
+    u64 down = padGetButtonsDown(&pad);
+    if (down & HidNpadButton_B) g_cancel = true;
+    if (g_dlActive) {
+        updateTouch();
+        if (down & HidNpadButton_X) g_dlPaused = !g_dlPaused;
+        int bx = (W - 700) / 2, by = (H - 350) / 2;
+        if (tp.released && !tp.moved) {
+            if (inRect(tp.x, tp.y, bx + 30, by + 296, 300, 42)) g_dlPaused = !g_dlPaused;
+            if (inRect(tp.x, tp.y, bx + 370, by + 296, 300, 42)) g_cancel = true;
+        }
+    }
     if (!force && now - g_lastUI < 80) return;
     g_lastUI = now;
     pump();
@@ -614,9 +641,17 @@ static void reloadBoth() {
 
 struct Bridge : gd::Progress {
     bool tick(uint64_t n) override {
-        g_pDone += n;
+        if (!g_dlActive) g_pDone += n;
         tickProgress();
         return !g_cancel;
+    }
+    gd::downloads::Action action() override {
+        return g_cancel ? gd::downloads::Action::Cancel : g_dlPaused ? gd::downloads::Action::Pause : gd::downloads::Action::Continue;
+    }
+    void transfer(const gd::downloads::Status& value) override {
+        g_dlStatus = value;
+        g_pDone = g_dlBase + value.current;
+        g_pTotal = g_dlOtherTotal + value.total;
     }
 };
 static Bridge g_bridge;
@@ -785,7 +820,11 @@ static bool dlTree(const Entry& e, const std::string& dstDir, std::string& outPa
     it.id = e.id;
     it.name = e.name;
     it.size = e.size;
-    if (!gd::downloadFile(it, dst, &g_bridge)) { g_err = gd::lastError(); return false; }
+    g_dlBase = g_pDone; g_dlOtherTotal = g_pTotal >= e.size ? g_pTotal - e.size : 0;
+    g_dlActive = true; g_dlPaused = false;
+    bool downloaded = gd::downloadFile(it, dst, &g_bridge);
+    g_dlActive = false; g_dlPaused = false;
+    if (!downloaded) { g_err = gd::lastError(); return false; }
     if (g_pCountFiles) ++g_pFilesDone;
     return true;
 }
@@ -1085,8 +1124,7 @@ static void doCopyMove(bool move) {
         if (s.drive) {
             std::string outPath;
             ok = dlTree(e, d.path, outPath, 0);
-            if (!ok && !outPath.empty() && !removeTree(outPath))
-                g_err += " ATENÇÃO: download incompleto pode permanecer em " + outPath;
+            if (!ok) g_err += " Arquivos concluidos e parciais preservados; use Downloads do Drive.";
             if (ok && move && !e.gdoc && !gd::trashItem(e.id)) { ok = false; g_err = gd::lastError(); }
         } else if (d.drive) {
             std::string from = join(s.path, e.name);
@@ -1575,7 +1613,11 @@ static void wifiMenu() {
                   "Desligue quando terminar.",
                   {"Cancelar", "Iniciar FTP"}) != 1) return;
         std::string err;
-        if (!wifi::start(err)) { message("FTP indisponivel", err); return; }
+        if (!wifi::start(err)) {
+            int choice = modal("FTP indisponivel", wrapText(err, 48), {"Voltar", "Diagnostico detalhado"});
+            if (choice == 1) message("Diagnostico FTP", wrapText(wifi::diagnostics(), 48));
+            return;
+        }
     }
     std::string last = wifi::lastActivity();
     if (last.size() > 38) last = last.substr(0, 35) + "...";
@@ -1588,15 +1630,72 @@ static void wifiMenu() {
         "\nTotal transferido: " + fmtSize(wifi::bytesTransferred()) +
         "\nUltima atividade:" +
         "\n" + last,
-        {"Manter ativo", "Parar servidor FTP"});
+        {"Manter ativo", "Parar servidor FTP", "Diagnostico FTP"});
     if (choice == 1) wifi::stop();
+    if (choice == 2) message("Diagnostico FTP", wrapText(wifi::diagnostics(), 48));
+}
+
+static void downloadsMenu() {
+    std::vector<gd::downloads::Job> jobs;
+    unsigned invalid = 0;
+    if (!gd::pendingDownloads(jobs, invalid)) { message("Downloads do Drive", wrapText(gd::lastError(), 48)); return; }
+    if (jobs.empty()) { message("Downloads do Drive", invalid ? "Registros invalidos foram preservados. Nenhuma tarefa recuperavel desta conta." : "Nenhum download pendente desta conta."); return; }
+    std::vector<std::string> labels;
+    for (const auto& job : jobs) labels.push_back(std::string(gd::downloads::label(job.state)) + " — " + baseName(job.destination));
+    int selected = modal("Downloads do Drive", invalid ? "Ha registros invalidos preservados." : "Escolha uma tarefa desta conta.", labels);
+    if (selected < 0) return;
+    const auto& job = jobs[selected];
+    int choice = modal("Download interrompido", wrapText(baseName(job.destination) + " — " + fmtSize(job.offset) + " / " + fmtSize(job.remote.size), 44), {"Continuar", "Cancelar tarefa", "Voltar"});
+    if (choice == 0) {
+        g_cancel = false; beginTransferProgress(); g_pTotal = job.remote.size; g_pFilesTotal = 1;
+        g_pTitle = "Download do Google Drive"; g_pName = baseName(job.destination);
+        g_dlBase = 0; g_dlOtherTotal = 0; g_dlActive = true; g_dlPaused = false;
+        bool ok = gd::resumeDownload(job, &g_bridge);
+        g_dlActive = false; g_dlPaused = false;
+        reloadBoth();
+        message("Downloads do Drive", ok ? "Download concluido e verificado." : wrapText(gd::lastError(), 48));
+    } else if (choice == 1) {
+        bool ok = gd::cancelDownload(job);
+        message("Downloads do Drive", ok ? "Tarefa cancelada. O parcial foi preservado; nao sera retomado automaticamente." : wrapText(gd::lastError(), 48));
+    }
+}
+static void executablePath() {
+    std::string value = g_executable;
+    size_t position = 0;
+    do {
+        std::string page;
+        for (int line = 0; line < 8 && position < value.size(); ++line) {
+            page += value.substr(position, 38) + "\n"; position += std::min<size_t>(38, value.size() - position);
+        }
+        int r = modal("Caminho do NRO em execucao", page, position < value.size() ? std::vector<std::string>{"Proxima pagina", "Voltar"} : std::vector<std::string>{"Voltar"});
+        if (r != 0 || position >= value.size()) break;
+    } while (true);
+}
+static void buildMenu() {
+    int choice = modal("Versao e diagnostico do NRO", std::string("Versao compilada: ") + SFM_VERSION + "\nBuild: " + SFM_BUILD_ID, {"Caminho em execucao", "Conferir copias no SD", "Voltar"});
+    if (choice == 0) executablePath();
+    else if (choice == 1) {
+        showBusy("Conferindo NROs, somente leitura...");
+        auto scan = sfm::build::inspect("sdmc:/switch", []() {
+            padUpdate(&pad); return appletMainLoop() && !(padGetButtonsDown(&pad) & HidNpadButton_B);
+        });
+        if (scan.copies.empty()) { message("Copias do aplicativo", scan.limited || scan.cancelled ? "Busca incompleta; nenhum NRO identificado na parte examinada." : "Nenhum NRO identificado em sdmc:/switch."); return; }
+        std::vector<std::string> options;
+        for (const auto& copy : scan.copies) options.push_back(copy.version + " — " + copy.path);
+        int index = modal("Copias do aplicativo", scan.limited || scan.cancelled ? "Busca limitada/cancelada; arquivos preservados." : "Somente leitura; nenhuma copia e excluida.", options);
+        if (index >= 0) {
+            const auto& copy = scan.copies[index];
+            message("Metadados da copia", wrapText("NACP: " + copy.version + " Build: " + copy.build, 44));
+            std::string running = g_executable; g_executable = copy.path; executablePath(); g_executable = running;
+        }
+    }
 }
 
 static void actionsMenu() {
     std::vector<std::string> o = {
         "Copiar para o outro painel", "Mover para o outro painel", "Renomear",
         "Nova pasta", "Apagar", "Seleção múltipla...",
-        "Fila de transferências...", "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta...", "Transferência Wi-Fi..."};
+        "Fila de transferências...", "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta...", "Transferência Wi-Fi...", "Downloads do Drive...", "Versão e diagnóstico do NRO..."};
     int r = modal("Ações — v" SFM_VERSION, "", o);
     if (r >= 0 && r < (int)o.size()) sfm_diag::write("ACAO", o[r]);
     switch (r) {
@@ -1613,6 +1712,8 @@ static void actionsMenu() {
         case 10: favMenu(); break;
         case 11: cloudMenu(); break;
         case 12: wifiMenu(); break;
+        case 13: downloadsMenu(); break;
+        case 14: buildMenu(); break;
         default: break;
     }
 }
@@ -1697,7 +1798,8 @@ static void handleInput() {
 
 int main(int argc, char** argv) {
     sfm_diag::write("APP", "Inicio v" SFM_VERSION);
-    if (argc > 0 && argv && argv[0]) sfm_diag::write("APP", std::string("executavel=") + argv[0]);
+    sfm_diag::write("APP", sfm::build::identity());
+    if (argc > 0 && argv && argv[0]) { g_executable = argv[0]; sfm_diag::write("APP", std::string("executavel=") + argv[0]); }
 
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeDefault(&pad);

@@ -135,3 +135,8 @@ O menu usa o modal existente para controles físicos, toque e rolagem. Estado: C
 ## Evidências de teste
 
 A suíte de host testa módulos locais, logs, ZIP real, FTP em loopback e Drive simulado. A aplicação é compilada com devkitPro e o NRO é validado estruturalmente. **Menus, toque, controles, desempenho no console e OAuth/SSL reais não se tornam aprovados por esses resultados.** O relato de falha física de persistência é evidência de problema, não de aprovação da matriz do Switch. A Missão 3 exige token gravado e relido antes de confirmar a sessão, preserva dados diante de erros OAuth e permite tentar novamente a gravação local. Resultados novos desta missão ficam no [relatório de validação](RELATORIO_VALIDACAO.md).
+
+## Menus da candidata 3.2
+
+- Downloads do Drive...: checkpoints, Pausar/Continuar/Cancelar, recuperacao de tarefas desta conta.
+- Versão e diagnóstico do NRO...: versao compilada, identificador de build, caminho em execucao e busca somente leitura de copias.

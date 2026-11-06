@@ -37,7 +37,7 @@ Na v0.10.8, o proprietário relatou **“Falha ao salvar login no cartão SD.”
 - A fila limita 20 tarefas locais, não tem rollback por tarefa e não aceita Drive. Um item já copiado pode exigir revisão antes de repetir uma tarefa interrompida.
 - Exclusão recursiva consulta o progresso para desenhar/ler B, mas não oferece parada imediata garantida em toda a travessia; não anunciar cancelamento universal de exclusão.
 - O analisador exibe nove maiores itens imediatos. O cálculo de propriedades limita aprofundamento e pode omitir itens inacessíveis; datas remotas não são buscadas.
-- Não há tela Sobre ou versão no cabeçalho principal (o menu Ações mostra a versão em execução), bateria/relógio, visualizador universal ou instalador de NSP/XCI/NSZ implementados.
+- A candidata mostra versao/build no cabecalho e tem diagnostico de NRO/caminho/copias. Nao ha bateria/relogio, visualizador universal ou instalador de NSP/XCI/NSZ implementados.
 
 ## Limites da persistência OAuth na v0.10.10
 
@@ -56,3 +56,11 @@ O Lite apresentou “Falha ao inicializar a rede” no FTP. O conflito de inicia
 O Homebrew Menu exibiu 0.10.8 quando se esperava 0.10.9. O NRO anterior validado contém NACP 0.10.9; duplicados, caminho aberto e arquivo antigo permanecem hipóteses. A 0.10.10 reforça build e identificação, mas não declara a causa física descoberta. Ver [versão](VERSAO_E_INSTALACAO.md) e [FTP](FTP.md).
 
 Esquecimento preserva cópias de outras contas identificadas e conteúdo não atribuível; esse último caso é informado como resíduo. A autorização compartilhada do aplicativo em google.json é mantida. Não há revogação remota ou suporte a uma lista de múltiplas contas ativas simultaneamente; o gerenciamento é da conta ativa/salva, com troca transacional.
+
+## Resultado fisico recebido — bloqueio de producao
+
+Na 0.10.10, o proprietario aprovou acesso Drive, Manter conectado e desconectar/reconectar. Reprovou versao exibida, FTP, FTP apos Drive e recuperacao do download apos perda de internet. Nao considerar a Missao 3.1 aprovada para producao. As causas fisicas de FTP/versao nao sao exclusivas nem comprovadas por testes POSIX. A 0.10.11 oferece etapas/codigos na tela e identidade do executavel para a proxima execucao.
+
+Downloads sao de arquivos binarios Drive, com validacao de id/versao/tamanho, CRC local e Range. Nao implementam retomada de upload nem fila persistente completa de uma arvore: arquivos iniciados sao recuperaveis individualmente; itens nao iniciados nao sao enfileirados. Parciais antigos/cancelados e journals permanecem, consumindo SD. Nao existe expurgo automatico. Cancelar nao apaga dados pessoais nem outros downloads.
+
+Checkpoint/fsync e renomeacao nao garantem atomicidade contra corte eletrico. FAT32 >4 GiB, exFAT, latencia do SD e acesso concorrente externo continuam exigindo teste. DNS/conexao TCP podem depender dos prazos do sistema; a parte SSL dos downloads usa operacoes nao bloqueantes com limite de espera. A aprovacao fisica do fluxo antigo de login nao e homologacao dos novos downloads. Ver [limites](DOWNLOADS_DRIVE.md) e [checklist](VALIDACAO_SWITCH_LITE_3_2.md).

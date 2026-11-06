@@ -103,8 +103,16 @@ A reprodução com EEXIST comprova uma incompatibilidade do código anterior; n�
 
 ## Continuidade após a Missão 3.1
 
-Atual: **0.10.10 experimental**, mesma branch/PR #1. Antes de alterar autenticação, ler o [contrato de contas/persistência](GOOGLE_DRIVE_PERSISTENCIA.md). O arquivo drive-account.json é a autoridade quando existe; nunca retornar silenciosamente ao token legado se o estado novo for inválido/forgotten. Desconectar preserva autorização; Esquecer é explícito, seletivo e local. PKCE/state não tornam a combinação Android↔Switch automaticamente homologada pelo Google.
+A Missao 3.1 entregou **0.10.10 experimental**, mesma branch/PR #1. Antes de alterar autenticação, ler o [contrato de contas/persistência](GOOGLE_DRIVE_PERSISTENCIA.md). O arquivo drive-account.json é a autoridade quando existe; nunca retornar silenciosamente ao token legado se o estado novo for inválido/forgotten. Desconectar preserva autorização; Esquecer é explícito, seletivo e local. PKCE/state não tornam a combinação Android↔Switch automaticamente homologada pelo Google.
 
 FTP/Drive usam exclusivamente socket_runtime; não inserir socketInitialize/socketExit nos consumidores. O último dono encerra, e falhas permitem retry. VERSION prevalece sobre argumentos antigos do make; NACP é conferido por conteúdo. O menu Ações e log de caminho ajudam a diferenciar cópias antigas no Homebrew Menu.
 
 O [histórico da Missão 3](historico/VALIDACAO_MISSAO_3.md) preserva sua execução anterior; [relatório atual](RELATORIO_VALIDACAO.md) e logs/artefatos do Actions são a evidência desta revisão. Nada comprova aprovação física de FTP, contas ou versão no Lite até executar a matriz. Não fazer merge ou Release nesta missão.
+
+## Continuidade da Missao 3.2
+
+Atual: 0.10.11 experimental, mesma branch/PR. O relato fisico aprovou acesso/persistencia/reconexao do Drive na 0.10.10, mas reprovou FTP/versao/retomada de download; a 3.1 nao esta aprovada para producao. Preservar a autenticacao e os dados reais.
+
+DownloadManager esta em src/cloud/download_manager.cpp, contrato em include/cloud/download_manager.h. Usa Transport para reaproveitar HTTP/OAuth existentes, estado por conta/tarefa e journals transfer.bin no diretorio tecnico downloads. Nunca voltar a remover destino/parcial em falha de rede. Conhecer [DOWNLOADS_DRIVE.md](DOWNLOADS_DRIVE.md) antes de alterar checkpoints, cancelamento ou publicacao.
+
+Diagnostico local FTP usa NIFM/gethostid e codigos por etapa; nenhuma sonda externa e necessaria. Versao/build sao gerados em prepare; nao editar version.h. build_info le NROs sem altera-los e tem limites de busca. Resultados atuais no [relatorio](RELATORIO_VALIDACAO.md); [3.1 historica](historico/VALIDACAO_MISSAO_3_1.md).

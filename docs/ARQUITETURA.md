@@ -74,3 +74,13 @@ A UI continua Commander com os mesmos modais/controles/toque. O menu de conta se
 O registro drive-account.json reúne autorização e preferência para um commit único. A importação dos arquivos legados preserva originais; a precedência do novo estado impede retorno indevido à conta antiga. Cancelamento conserva uma sessão anterior em memória e sucesso limpa os painéis remotos. Esquecimento primeiro persiste bloqueio sem token e depois remove só cópias atribuíveis, com impressões para retomar exclusão parcial. Não existe revogação remota ou lista de contas simultâneas.
 
 A geração NACP usa comparação de conteúdo para evitar metadados obsoletos com timestamps preservados, e a distribuição identifica caminho/versão/hash. Inspeção de duplicados é somente leitura. Ver [versão e instalação](VERSAO_E_INSTALACAO.md).
+
+## Transferencias recuperaveis e identidade — 3.2
+
+DownloadManager separa controle/persistencia de HTTP/OAuth. O adaptador Drive valida metadados e Content-Range antes de gravar; a maquina consulta novamente a versao antes de acrescentar/publicar. Checkpoints locais registram offset/CRC e revisao conhecida, com dados em parcial exclusivo. O journal reutiliza a gravacao verificada de persist::File::Transfer; nenhuma credencial vai no journal.
+
+A UI continua sincrona, com callbacks de progresso/controle e pausa que suspende requisicoes apos fechar a operacao corrente. Parada de rede tem backoff limitado, e recuperacao apos reinicio e explicita pelo menu. Arvores preservam arquivos concluidos e a estrutura criada quando um arquivo falha.
+
+SSL nao bloqueante e waitIo sao usados somente no contexto dos downloads: repetem WouldBlock, respeitam limites/controle e propagam erros de certificado. O fluxo de login interativo que funcionou no hardware permanece com seu comportamento anterior. DNS/TCP ainda dependem do sistema.
+
+BuildInfo e somente leitura. A identidade de fontes entra no cabecalho gerado e no NRO/manifesto, com validação pelo empacotador; nao depende de .git presente na copia devkitPro.

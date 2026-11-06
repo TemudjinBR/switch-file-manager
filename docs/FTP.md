@@ -47,3 +47,15 @@ Na 0.10.10, [socket_runtime.cpp](../src/network/socket_runtime.cpp) coordena uma
 Falhas de `socketInitializeDefault` registram `Result=0xXXXXXXXX`, módulo/descrição, tipo de applet e memória total/usada quando o SDK permite consultá-las. Logs em `sdmc:/switch/Switch File Manager/logs/sfm.log`, categoria REDE. Result não é errno e não é substituído por código inventado. O transporte de arquivos mantém porta 2121, buffers existentes e aviso anônimo; não há promessa de resolver falta real de memória apenas por unificar os serviços.
 
 Os testes de ciclo de vida exercitam o servidor FTP real em loopback, upload/download, parada/reinício, falha recuperável e Drive → FTP/FTP → Drive. A fronteira libnx simula serviço já inicializado e Result de falha; não simula applet, Wi-Fi, SSL ou memória do console. Validar no Lite em modo applet e memória completa, antes e depois de usar Drive.
+
+## Correcao e diagnostico da Missao 3.2
+
+O proprietario confirmou falha de FTP isolado e apos Drive na 0.10.10. A correcao de posse compartilhada continua necessaria, mas nao comprovou a causa exclusiva no hardware e a 3.1 nao foi aprovada para producao.
+
+O codigo anterior descobria IP conectando um socket UDP a 1.1.1.1:53. A nova candidata usa nifmGetCurrentIpAddress e estado local; se NIFM estiver indisponivel, tenta gethostid do BSD ja inicializado, registrando a origem. FTP LAN nao exige acesso a um servidor externo. Isso remove uma dependencia concreta, sem provar a causa do relato fisico.
+
+Falhas agora aparecem na propria tela com etapa e codigo: sockets-inicializar/Result (SDK), wifi-ip/NIFM, criar-socket, configurar-socket, vincular-2121, escutar-2121 e consultar-porta/errno. Threads usam pthread_create com retorno verificado, identificacao pthread e pilha de 256 KiB; nao se depende de excecao de std::thread em build sem excecoes. Os buffers de dados continuam no heap. Falha de cliente recebe 421 e e registrada.
+
+O dialogo de erro oferece diagnostico detalhado; o dialogo ativo tambem permite consulta. Result, errno e pthread sao codigos de origens distintas. O contexto mostra applet/memoria e donos FTP/Drive. Nao se reinicia globalmente sockets enquanto o Drive os possui. Parada/reinicio libera somente os descritores e a posse do FTP.
+
+O worker registra erro de select, e uma nova inicializacao recolhe threads/descritores terminados. Testes simulam queda/retorno de Wi-Fi e falhas em cada etapa, com transferencias FTP reais em loopback. NIFM, Wi-Fi, recursos/threads e modos applet/memoria completa continuam dependentes do Lite. [Checklist](VALIDACAO_SWITCH_LITE_3_2.md).

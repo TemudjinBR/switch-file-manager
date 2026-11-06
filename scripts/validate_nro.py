@@ -3,10 +3,12 @@
 from pathlib import Path
 import argparse
 import struct
+import re
+from prepare import build_identity
 from version import read_version
 
 
-def validate(path, expected_version=None):
+def validate(path, expected_version=None, expected_build=None):
     data = Path(path).read_bytes()
     def require(condition, message):
         if not condition:
@@ -37,11 +39,15 @@ def validate(path, expected_version=None):
     require(title == 'Switch File Manager', 'Título NACP incorreto')
     if expected_version is not None:
         require(version == expected_version, 'Versão NACP diverge de VERSION')
-    return {'arquivo': Path(path).name, 'bytes': len(data), 'versao': version, 'titulo': title}
+    markers = set(re.findall(rb'SFM_BUILD:(v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{12})\x00', data[:size]))
+    build = next(iter(markers)).decode() if len(markers) == 1 else 'indisponivel'
+    if expected_build is not None:
+        require(build == expected_build, 'Identificacao do build diverge dos fontes')
+    return {'build': build, 'arquivo': Path(path).name, 'bytes': len(data), 'versao': version, 'titulo': title}
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('nro', type=Path)
     args = parser.parse_args()
-    print(validate(args.nro, read_version()))
+    print(validate(args.nro, read_version(), build_identity()))

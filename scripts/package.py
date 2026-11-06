@@ -7,6 +7,7 @@ import json
 import zipfile
 from validate_nro import validate
 from version import ROOT, read_version
+from prepare import build_identity
 
 NRO_NAME = 'SwitchFileManager.nro'
 SD_PATH = 'switch/Switch File Manager/' + NRO_NAME
@@ -14,22 +15,25 @@ SD_PATH = 'switch/Switch File Manager/' + NRO_NAME
 
 def package(nro, output, root=ROOT):
     version = read_version(root)
-    validate(nro, version)
+    metadata = validate(nro, version, build_identity(root))
     data = Path(nro).read_bytes()
     digest = hashlib.sha256(data).hexdigest()
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     (output / NRO_NAME).write_bytes(data)
     (output / (NRO_NAME + '.sha256')).write_text(f'{digest}  {NRO_NAME}\n', encoding='utf-8')
-    manifest = json.dumps({'versao': version, 'nro_sha256': digest,
+    manifest = json.dumps({'versao': version, 'nro_sha256': digest, 'build': metadata['build'],
                            'validacao_console': 'pendente', 'caminho_instalacao': SD_PATH}, ensure_ascii=False, indent=2) + '\n'
     readme = ('Switch File Manager v' + version + '\n\n'
               'Extraia a pasta switch na raiz do microSD e abra pelo Homebrew Menu.\n'
               'Executável deste pacote: ' + SD_PATH + '\n'
+              'Build: ' + metadata['build'] + '\n'
               'Versão NACP conferida: ' + version + '; SHA-256: ' + digest + '\n'
               'O menu Ações mostra a versão em execução; o log APP registra seu caminho.\n'
               'Se aparecer outra versão, confira o caminho selecionado no Homebrew Menu.\n'
               'Cópias em outros diretórios não são removidas automaticamente.\n'
+              'Confirme também o Build em Ações > Versão e diagnóstico do NRO.\n'
+              'Se a identidade não corresponder a este manifesto, outro NRO foi aberto.\n'
               'As configurações existentes em switch/switch-manager são preservadas.\n'
               'Este pacote exige validação no console antes de uma Release pública.\n')
     archive = output / f'SwitchFileManager-v{version}.zip'

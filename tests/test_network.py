@@ -12,6 +12,7 @@ import io
 import json
 import select
 import socket
+import re
 import subprocess
 import tempfile
 import threading
@@ -32,7 +33,7 @@ class NetworkTests(unittest.TestCase):
                         *[str(ROOT / p) for p in ('tests/host/ftp.cpp', 'src/network/wifi_transfer.cpp', 'src/network/socket_runtime.cpp',
                                                   'src/diagnostics/logger.cpp')], '-o', str(cls.ftp_binary)],
                        check=True, capture_output=True)
-        subprocess.run([*common, '-I' + str(ROOT / 'tests/stubs'), *[str(ROOT / p) for p in ('tests/host/drive.cpp', 'src/cloud/gdrive.cpp', 'src/security/oauth.cpp', 'src/network/socket_runtime.cpp', 'src/cloud/credential_store.cpp', 'src/diagnostics/logger.cpp', 'tests/host/fsdev_rename.cpp')],
+        subprocess.run([*common, '-I' + str(ROOT / 'tests/stubs'), *[str(ROOT / p) for p in ('tests/host/drive.cpp', 'src/cloud/gdrive.cpp', 'src/cloud/download_manager.cpp', 'src/security/oauth.cpp', 'src/network/socket_runtime.cpp', 'src/cloud/credential_store.cpp', 'src/diagnostics/logger.cpp', 'tests/host/fsdev_rename.cpp')],
                         '-Wl,--wrap=rename', '-o', str(cls.drive_binary)], check=True, capture_output=True)
 
     @classmethod
@@ -160,7 +161,33 @@ class NetworkTests(unittest.TestCase):
                     else: self.respond(503, {})  # identificação opcional indisponível
                     return
                 if mode == 'accounts': state.setdefault('api_accounts', []).append(self.headers.get('Authorization'))
+                if self.path.startswith('/drive/v3/files/test-file?') and 'alt=media' not in self.path:
+                    self.respond(200, {'id': 'test-file', 'size': str(len(state['data'])), 'version': str(state.get('version', 1))})
+                    return
                 if 'alt=media' in self.path:
+                    state.setdefault('ranges', []).append(self.headers.get('Range'))
+                    state['media_requests'] = state.get('media_requests', 0) + 1
+                    if mode in ('cut-range', 'http-change', 'ignore-range', 'media-refresh'):
+                        if mode == 'media-refresh' and state['media_requests'] == 1:
+                            self.respond(401, b''); return
+                        match = re.fullmatch(r'bytes=(\d+)-(\d+)', self.headers.get('Range', ''))
+                        start, end = map(int, match.groups())
+                        data = state['data']; end = min(end, len(data)-1)
+                        payload = data[start:end+1]
+                        if mode == 'ignore-range' and state['media_requests'] > 1:
+                            self.respond(200, data); return
+                        self.send_response(206)
+                        self.send_header('Content-Length', str(len(payload)))
+                        self.send_header('Content-Range', f'bytes {start}-{end}/{len(data)}')
+                        self.send_header('ETag', '"version-' + str(state.get('version', 1)) + '"')
+                        self.send_header('Connection', 'close'); self.end_headers()
+                        if state['media_requests'] == 1 and mode in ('cut-range', 'ignore-range'):
+                            self.wfile.write(payload[:17000]); self.wfile.flush()
+                            self.close_connection = True
+                        else: self.wfile.write(payload)
+                        if mode == 'http-change' and state['media_requests'] == 1:
+                            state['version'] = 2; state['data'] = b'X' * len(data)
+                        return
                     if mode == 'range-error': self.respond(416, b'')
                     elif mode == 'short-body': self.respond(206, b'curto')
                     else: self.respond(206, state['data'], {'Content-Range': f'bytes 0-{len(state["data"])-1}/{len(state["data"])}'})
@@ -222,13 +249,13 @@ class NetworkTests(unittest.TestCase):
     def test_drive_rejects_short_download(self):
         config = self.config(); dest = self.root / 'short.bin'
         with self.mock_drive('short-body') as (port, state):
-            self.drive(port, config, 'download', dest, 100, success=False)
+            self.drive(port, config, 'download', dest, len(state['data']), success=False)
         self.assertFalse(dest.exists())
 
     def test_drive_rejects_unsatisfied_range(self):
         config = self.config(); dest = self.root / 'range.bin'
         with self.mock_drive('range-error') as (port, state):
-            self.drive(port, config, 'download', dest, 100, success=False)
+            self.drive(port, config, 'download', dest, len(state['data']), success=False)
         self.assertFalse(dest.exists())
 
     def test_drive_preserves_existing_destination(self):
@@ -751,3 +778,41 @@ class NetworkTests(unittest.TestCase):
                 self.assertEqual(self.status(process), 'logged=1 source=0')
                 self.assertEqual(self.command(process, 'list'), 'list=1')
                 self.assertEqual(state['api_accounts'][-1], 'Bearer access-A')
+
+    def test_http_disconnect_resumes_range_and_publishes_complete_content(self):
+        config = self.config(); dest = self.root / 'recovered-http.bin'
+        with self.mock_drive('cut-range') as (port, state):
+            self.drive(port, config, 'download', dest, len(state['data']))
+            self.assertEqual(dest.read_bytes(), state['data'])
+            self.assertIn('bytes=17000-', state['ranges'][1])
+
+    def test_http_remote_change_does_not_mix_old_and_new_versions(self):
+        config = self.config(); dest = self.root / 'changed-http.bin'
+        with self.mock_drive('http-change') as (port, state):
+            self.drive(port, config, 'download', dest, len(state['data']))
+            self.assertEqual(dest.read_bytes(), b'X' * len(state['data']))
+            self.assertGreaterEqual(state['media_requests'], 2)
+
+    def test_http_ignored_range_restarts_from_zero(self):
+        config = self.config(); dest = self.root / 'ignored-range.bin'
+        with self.mock_drive('ignore-range') as (port, state):
+            self.drive(port, config, 'download', dest, len(state['data']))
+            self.assertEqual(dest.read_bytes(), state['data'])
+            self.assertEqual(state['ranges'][2].split('-')[0], 'bytes=0')
+
+    def test_download_http_401_renews_token_without_new_consent(self):
+        config = self.config(); dest = self.root / 'refresh-download.bin'
+        with self.mock_drive('media-refresh') as (port, state):
+            self.drive(port, config, 'download', dest, len(state['data']))
+            self.assertEqual(dest.read_bytes(), state['data'])
+            self.assertEqual(state['token_requests'], 2)
+
+    def test_download_protocol_error_preserves_account_connection_state(self):
+        config = self.config(); dest = self.root / 'protocol-failure.bin'
+        original = (config / 'google.json').read_bytes()
+        with self.mock_drive('range-error') as (port, state):
+            result = self.drive(port, config, 'download', dest, len(state['data']), success=False)
+            self.assertIn('logged=1 state=Conectado', result.stdout)
+            self.assertEqual(state['token_requests'], 1)
+        self.assertEqual((config / 'google.json').read_bytes(), original)
+        self.assertEqual((config / 'token.txt').read_text(), 'fake-refresh')

@@ -20,7 +20,7 @@ python3 scripts/validate_nro.py SwitchFileManager.nro
 python3 tests/run.py --nro SwitchFileManager.nro
 python3 scripts/package.py
 (cd dist && sha256sum --check SwitchFileManager.nro.sha256)
-(cd dist && sha256sum --check SwitchFileManager-v0.10.10.zip.sha256)
+(cd dist && sha256sum --check SwitchFileManager-v0.10.11.zip.sha256)
 ```
 
 `bash scripts/build.sh` reúne testes, build, validação e pacote. No ambiente desta auditoria utiliza `/workspace/sfm-environment/build.sh`, que compila uma cópia descartável com a imagem devkitPro configurada. O build nativo também funciona com as variáveis DEVKITPRO/DEVKITA64 do README.
@@ -136,3 +136,13 @@ A compilação final usa nacptool real. Os testes de protocolo e armazenamento c
 3. Autorizar conta de teste pelo Android, confirmar persistência e reabrir aplicativo com keep ativado/desativado. Reconectar, renovar, desconectar, trocar para outra conta e cancelar uma troca; conferir ausência de listagens antigas. Testar Esquecer somente em conta de teste, verificando aviso local/ausência de revogação alegada e preservação dos arquivos pessoais.
 
 Não provocar corte de energia, SD cheio/corrupção ou exclusão em dados do proprietário. Os cenários de falha já usam diretórios temporários e hooks no host. FAT32/exFAT real, UI/toque/controles e autorização Google real continuam não executados nesta missão.
+
+## Missao 3.2
+
+- test_download_manager: E/S temporaria real, CRC, interrupcao em checkpoint/publicacao/pausa, queda de conexao, Range recusado, versao alterada, cancelamento, destino concorrente e erros SD.
+- test_network: HTTP loopback com corpo cortado, Range real, arquivo alterado, resposta 200 ignorando Range, 401 com renovacao e todas as regressoes de autenticacao.
+- test_network_lifecycle: Wi-Fi simulado cai/retorna e falhas por etapa, alem de FTP↔Drive e transferencias reais loopback. A fronteira NIFM/SDK nao representa hardware.
+- test_build_info: identidade compilada, copias antigas, NRO invalido, links simbolicos, busca cancelada somente leitura e recusa de build diferente com mesma versao.
+- test_io_wait: WouldBlock, timeout, cancelamento e propagacao imediata de erro de certificado, sem simular um certificado real do console.
+
+A matriz fisica corrente esta em [VALIDACAO_SWITCH_LITE_3_2.md](VALIDACAO_SWITCH_LITE_3_2.md). A validacao recebida da 0.10.10 e identificada como relato do proprietario, sem inventar firmware, formato do SD, hash/caminho ou teste executado pela equipe.
