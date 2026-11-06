@@ -28,6 +28,8 @@
 #include "storage/operations.h"
 #include "security/paths.h"
 #include "ui/renderer.h"
+#include "ui/context_actions.h"
+#include "ui/pix_qr.h"
 using namespace sfm::paths;
 using namespace sfm::storage;
 using namespace sfm::security;
@@ -141,6 +143,7 @@ struct Pane {
     std::vector<Entry> items;
     int cur = 0, scroll = 0;
     std::set<std::string> marks;
+    bool contextFocused = false; // seleção por ação do usuário; cursor inicial não conta
     int sortMode = 0;        // 0 nome, 1 tamanho, 2 data, 3 tipo
     bool sortDesc = false;
     std::string filter;      // busca por nome (vazio = sem filtro)
@@ -213,6 +216,7 @@ struct Pane {
         sortItems();
         applyFilter();
         marks.clear();
+        contextFocused = false;
         int old = cur;
         cur = std::min(old, (int)items.size() - 1);
         if (cur < 0) cur = 0;
@@ -271,7 +275,7 @@ static void drawPane(Pane& p, int x, bool act) {
     for (int i = p.scroll; i < (int)p.items.size() && i < p.scroll + ROWS + 1; i++) {
         Entry& e = p.items[i];
         int ry = LIST_TOP + (i - p.scroll) * ROW_H;
-        if (i == p.cur) fillRound(x + 8, ry + 2, w - 16, ROW_H - 4, 10, act ? C_ACCD : C_SEL);
+        if (i == p.cur) fillRound(x + 8, ry + 2, w - 16, ROW_H - 4, 10, act && p.contextFocused ? C_ACCD : C_SEL);
         if (p.marks.count(e.key)) {
             fillRound(x + 10, ry + 8, 7, ROW_H - 16, 3, C_YEL);
             fillRound(x + 19, ry + 15, 4, ROW_H - 30, 2, C_YEL);
@@ -920,12 +924,12 @@ static void focusOn(const std::string& parent, const std::string& name) {
         if (!panes[i].drive && panes[i].path == parent) panes[i].reload(name);
 }
 
-static void doExtractZip(const std::string& zipPath, const std::string& destParent) {
+static bool doExtractZip(const std::string& zipPath, const std::string& destParent) {
     zx::Info info;
-    if (!zx::inspect(zipPath, info)) { message("ZIP", wrapText(zx::lastError(), 52)); return; }
+    if (!zx::inspect(zipPath, info)) { message("ZIP", wrapText(zx::lastError(), 52)); return false; }
     if (info.encrypted &&
         modal("ZIP com senha", "Alguns arquivos têm senha e não podem ser extraídos.\nOs demais serão extraídos normalmente.", {"Cancelar", "Continuar"}, 1) != 1)
-        return;
+        return false;
     std::string dest = uniqueName(join(destParent, safeName(stemOf(baseName(zipPath)))));
     g_cancel = false;
     g_pTitle = "Extraindo...";
@@ -941,7 +945,7 @@ static void doExtractZip(const std::string& zipPath, const std::string& destPare
     if (ok) focusOn(destParent, baseName(dest));
     if (!ok) message(g_cancel ? "Cancelado" : "Erro ao extrair", wrapText(g_cancel ? std::string("A extração foi cancelada.") : err, 52));
     else if (skipped > 0)
-        message("Concluído", std::to_string(skipped) + " item(ns) foram ignorados\n(caminho inseguro, senha ou formato não suportado).");
+        message("Concluído", std::to_string(skipped) + " item(ns) foram ignorados\n(caminho inseguro, senha ou formato não suportado).");    return ok;
 }
 
 static void doCompressZip(int level) {
@@ -975,26 +979,6 @@ static void showZipInfo(const std::string& zipPath) {
                                   "\nTamanho descompactado: " + fmtSize(info.totalBytes) + (info.encrypted ? "\nContém itens com senha." : ""));
 }
 
-static void zipMenu() {
-    Pane& p = panes[active];
-    Pane& o = panes[1 - active];
-    std::vector<std::string> opts = {"Compactar a seleção (rápido)", "Compactar a seleção (sem compressão)",
-                                     "Extrair o ZIP selecionado aqui", "Extrair o ZIP selecionado no outro painel", "Informações do ZIP"};
-    int r = modal("ZIP", "", opts);
-    if (r < 0) return;
-    if (r <= 1) { doCompressZip(r == 0 ? 1 : 0); return; }
-    if (p.drive) { message("ZIP", "Extrair só funciona com arquivos do cartão SD."); return; }
-    if (p.items.empty() || p.items[p.cur].dir || !endsWithZip(p.items[p.cur].name)) {
-        message("ZIP", "Selecione um arquivo .zip na lista primeiro.");
-        return;
-    }
-    std::string zipPath = join(p.path, p.items[p.cur].name);
-    if (r == 2) doExtractZip(zipPath, p.path);
-    else if (r == 3) {
-        if (o.drive) { message("ZIP", "O outro painel precisa ser uma pasta do cartão SD."); return; }
-        doExtractZip(zipPath, o.path);
-    } else showZipInfo(zipPath);
-}
 
 // ---------------------------------------------------------------- propriedades e espaço
 
@@ -1265,8 +1249,9 @@ static void doDelete() {
 
 static void doRename() {
     Pane& p = panes[active];
-    if (p.items.empty()) return;
-    Entry cur = p.items[p.cur];
+    const auto chosen = selection(p);
+    if (chosen.size() != 1) return;
+    Entry cur = chosen.front();
     std::string nn;
     if (!askText("Novo nome", cur.name, nn)) return;
     if (!validName(nn)) { message("Nome inválido", "O nome contém caracteres não permitidos."); return; }
@@ -1380,6 +1365,7 @@ static void toggleMark() {
     const std::string& k = p.items[p.cur].key;
     if (p.marks.count(k)) p.marks.erase(k);
     else p.marks.insert(k);
+    p.contextFocused = true;
     if (p.cur + 1 < (int)p.items.size()) p.cur++;
     p.ensureVisible();
 }
@@ -1548,7 +1534,7 @@ static void selectionMenu() {
         std::to_string(p.marks.size()) + " marcado(s) / " +
         std::to_string(p.items.size()) + " item(ns) visíveis", opts);
     if (choice < 0) return;
-    if (choice == 4) { p.marks.clear(); return; }
+    if (choice == 4) { p.marks.clear(); p.contextFocused = false; return; }
     for (const auto& e : p.items) {
         if (choice == 0 || (choice == 1 && !e.dir) || (choice == 2 && e.dir))
             p.marks.insert(e.key);
@@ -1557,6 +1543,7 @@ static void selectionMenu() {
             else p.marks.insert(e.key);
         }
     }
+    p.contextFocused = !p.marks.empty();
 }
 
 // Fila v0.8.0: instantâneos locais; nenhuma operação ocorre ao adicionar.
@@ -1856,31 +1843,204 @@ static void updatesMenu() {
             g_updates.cancel();
     }
 }
+// ---------------------------------------------------------------- menu contextual v0.10.13
+// Não misturar navegação geral com ações destrutivas sobre a seleção.
+static void selectAllInActivePane() {
+    Pane& p = panes[active];
+    for (const auto& item : p.items) p.marks.insert(item.key);
+    p.contextFocused = !p.marks.empty();
+}
+static void clearActiveSelection() {
+    Pane& p = panes[active];
+    p.marks.clear();
+    p.contextFocused = false;
+}
+static void extractSelectedZips() {
+    Pane& p = panes[active];
+    if (p.drive) { message("ZIP", "Baixe os arquivos para o microSD antes de extrair."); return; }
+    auto selected = selection(p); // instantâneo, pois a extração atualiza os painéis
+    if (selected.empty()) return;
+    std::vector<std::string> sources;
+    for (const auto& item : selected) {
+        if (item.dir || !endsWithZip(item.name)) {
+            message("ZIP", "A extração em lote exige somente arquivos .zip.");
+            return;
+        }
+        sources.push_back(join(p.path, item.name));
+    }
+    const int dest = modal("Extrair ZIP" + std::string(sources.size() > 1 ? "s" : ""),
+        std::to_string(sources.size()) + " arquivo(s). Cada ZIP será extraído em pasta própria.\nEscolha o destino.",
+        {"Cancelar", "Na pasta do painel ativo", "Na pasta do outro painel"}, 1);
+    if (dest <= 0) return;
+    Pane& target = panes[dest == 1 ? active : 1 - active];
+    if (target.drive) { message("ZIP", "A pasta de destino precisa estar no microSD."); return; }
+    std::string targetPath = target.path;
+    for (const auto& source : sources) {
+        if (!doExtractZip(source, targetPath)) break;
+    }
+}
+static const char* contextualLabel(sfm::ui::actions::Command action) {
+    using C = sfm::ui::actions::Command;
+    switch (action) {
+        case C::Copy: return "Copiar";
+        case C::Move: return "Mover";
+        case C::SelectAll: return "Selecionar tudo";
+        case C::ClearAll: return "Desmarcar tudo";
+        case C::Delete: return "Excluir";
+        case C::Rename: return "Renomear";
+        case C::CompressZip: return "Compactar em ZIP";
+        case C::ExtractZip: return "Extrair ZIP";
+    }
+    return "Desconhecido";
+}
+static void filesAndFoldersMenu() {
+    const int choice = modal("Arquivos e pastas", "",
+        {"Nova pasta", "Espaço total e livre do microSD", "Analisar espaço desta pasta", "Caminho do painel ativo"});
+    if (choice == 0) doMkdir();
+    else if (choice == 1) {
+        refreshSpace();
+        message("Espaço do microSD", "Total: " + fmtSize(g_total) +
+            "\nLivre: " + fmtSize(g_free) + "\nOcupado: " + fmtSize(g_total >= g_free ? g_total - g_free : 0));
+    }
+    else if (choice == 2) doSpaceAnalyzer();
+    else if (choice == 3) message("Pasta atual", panes[active].path);
+}
+// Painel de acesso comum. Ainda preserva filas locais e operações remotas distintas;
+// não anuncia indevidamente uma fila unificada que o motor ainda não possui.
+static void transfersMenu() {
+    std::vector<gd::downloads::Job> jobs;
+    unsigned invalid = 0;
+    bool known = gd::pendingDownloads(jobs, invalid);
+    std::string status = "Fila local: " + std::to_string(g_transferQueue.size()) + " tarefa(s)" +
+        "\nFTP: " + (wifi::running() ? std::string("ativo") : std::string("desligado")) +
+        "\nDrive: " + (known ? std::to_string(jobs.size()) + " download(s) pendente(s)" : "estado não disponível");
+    const int choice = modal("Transferências", status,
+        {"Fila local de cópias e movimentos", "Servidor FTP (Wi-Fi)",
+         "Google Drive e conta", "Downloads do Google Drive"});
+    if (choice == 0) transferQueueMenu();
+    else if (choice == 1) wifiMenu();
+    else if (choice == 2) cloudMenu();
+    else if (choice == 3) downloadsMenu();
+}
+static void organizationMenu() {
+    const int choice = modal("Organização", "", {"Ordenar e pesquisar", "Favoritos e histórico", "Atualizar painéis"});
+    if (choice == 0) sortMenu();
+    else if (choice == 1) favMenu();
+    else if (choice == 2) reloadBoth();
+}
+static int qrHexNibble(char ch) {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'A' && ch <= 'F') return 10 + (ch - 'A');
+    return 0;
+}
+static void drawDonationQr(int x, int y, int scale) {
+    // Quiet zone de 4 módulos. Não redesenhar nem estilizar os módulos de dados.
+    constexpr int border = 4;
+    constexpr int n = sfm::ui::pix::kSize;
+    fillRect(x, y, (n + 2 * border) * scale, (n + 2 * border) * scale, Col{255, 255, 255, 255});
+    for (int row = 0; row < n; ++row) {
+        for (int column = 0; column < n; ++column) {
+            int nibble = qrHexNibble(sfm::ui::pix::kRows[row][column / 4]);
+            if ((nibble >> (3 - column % 4)) & 1)
+                fillRect(x + (column + border) * scale, y + (row + border) * scale,
+                         scale, scale, Col{0, 0, 0, 255});
+        }
+    }
+}
+static void aboutScreen() {
+    // Sobre contém a doação voluntária, sem menção a Pix no menu Sistema.
+    for (;;) {
+        if (!appletMainLoop()) { g_quit = true; return; }
+        padUpdate(&pad);
+        updateTouch();
+        const u64 pressed = padGetButtonsDown(&pad);
+        if (pressed & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_X)) return;
+        if (tp.released && !tp.moved && inRect(tp.x, tp.y, 890, 614, 240, 46)) return;
+        drawMain();
+        fillRect(0, 0, W, H, Col{0, 0, 0, 190});
+        fillRound(66, 32, 1148, 650, 20, C_PANEL);
+        fillRect(66, 32, 7, 650, C_ACC);
+        drawText(fL, "Sobre o Switch File Manager", 112, 68, C_TXT);
+        drawText(fM, "Gerenciador de arquivos para Nintendo Switch", 112, 130, C_TXT, 585);
+        drawText(fS, "Dois painéis | microSD | FTP | Google Drive experimental", 112, 172, C_DIM, 605);
+        drawText(fS, "Desenvolvedor: TemudjinBR", 112, 223, C_TXT);
+        drawText(fS, std::string("Versão: ") + SFM_VERSION + " (experimental)", 112, 256, C_TXT);
+        drawText(fS, std::string("Build: ") + SFM_BUILD_ID, 112, 288, C_DIM, 590);
+        drawText(fS, "github.com/TemudjinBR/switch-file-manager", 112, 331, C_ACC, 595);
+        fillRect(112, 384, 575, 2, C_PAN2);
+        drawText(fM, "Apoie o desenvolvimento", 112, 405, C_TXT);
+        drawText(fS, "Sua contribuição voluntária ajuda a manter", 112, 451, C_TXT);
+        drawText(fS, "o projeto ativo e incentiva novas melhorias.", 112, 481, C_TXT);
+        drawText(fS, "O aplicativo continua gratuito.", 112, 536, C_GRN);
+        drawText(fS, "Obrigado por apoiar o Switch File Manager!", 112, 577, C_DIM);
+        drawDonationQr(803, 187, 5);
+        drawText(fS, "Escaneie e escolha o valor", 955, 513, C_TXT, 320, 2);
+        drawText(fS, "de sua contribuição.", 955, 544, C_TXT, 320, 2);
+        drawText(fS, "Beneficiário: Flavio Hessnauer Filho", 955, 582, C_DIM, 370, 2);
+        fillRound(890, 614, 240, 46, 10, C_ACCD);
+        drawText(fM, "B  Voltar", 1010, 622, C_TXT, 230, 2);
+        present();
+    }
+}
+static void systemMenu() {
+    const int choice = modal("Sistema", "",
+        {"Atualizações", "Configurações do atualizador", "Versão e diagnósticos", "Sobre"});
+    if (choice == 0 || choice == 1) updatesMenu();
+    else if (choice == 2) buildMenu();
+    else if (choice == 3) aboutScreen();
+}
 static void actionsMenu() {
-    std::vector<std::string> o = {
-        "Copiar para o outro painel", "Mover para o outro painel", "Renomear",
-        "Nova pasta", "Apagar", "Seleção múltipla...",
-        "Fila de transferências...", "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta...", "Transferência Wi-Fi...", "Downloads do Drive...", "Versão e diagnóstico do NRO...", "Atualizações..."};
-    int r = modal("Ações — v" SFM_VERSION, "", o);
-    if (r >= 0 && r < (int)o.size()) sfm_diag::write("ACAO", o[r]);
-    switch (r) {
-        case 0: doCopyMove(false); break;
-        case 1: doCopyMove(true); break;
-        case 2: doRename(); break;
-        case 3: doMkdir(); break;
-        case 4: doDelete(); break;
-        case 5: selectionMenu(); break;
-        case 6: transferQueueMenu(); break;
-        case 7: sortMenu(); break;
-        case 8: zipMenu(); break;
-        case 9: propsMenu(); break;
-        case 10: favMenu(); break;
-        case 11: cloudMenu(); break;
-        case 12: wifiMenu(); break;
-        case 13: downloadsMenu(); break;
-        case 14: buildMenu(); break;
-        case 15: updatesMenu(); break;
-        default: break;
+    Pane& pane = panes[active];
+    auto selected = selection(pane);
+    bool allZip = !selected.empty();
+    for (const auto& item : selected)
+        if (item.dir || !endsWithZip(item.name)) { allZip = false; break; }
+    sfm::ui::actions::Context state;
+    state.focused = pane.contextFocused;
+    state.selected = (state.focused || !pane.marks.empty()) ? selected.size() : 0;
+    state.marked = pane.marks.size();
+    state.allZip = allZip;
+    state.cloud = pane.drive;
+    auto commands = sfm::ui::actions::contextualCommands(state);
+    if (commands.empty()) {
+        const std::vector<std::string> sections = {
+            "Arquivos e pastas", "Transferências", "Organização", "Sistema"
+        };
+        const int choice = modal("Ações — v" SFM_VERSION, "", sections);
+        if (choice >= 0) sfm_diag::write("ACAO", sections[choice]);
+        if (choice == 0) filesAndFoldersMenu();
+        else if (choice == 1) transfersMenu();
+        else if (choice == 2) organizationMenu();
+        else if (choice == 3) systemMenu();
+        return;
+    }
+    std::vector<std::string> labels;
+    for (auto command : commands) labels.push_back(contextualLabel(command));
+    int choice = modal("Ações — seleção", std::to_string(state.selected) + " item(ns) selecionado(s)", labels);
+    if (choice < 0) return;
+    // Um reload remoto durante o diálogo pode invalidar a seleção. Nunca aplicar
+    // operações ao item que tomou a posição do cursor por acidente.
+    if ((!pane.contextFocused && pane.marks.empty()) || pane.drive != state.cloud) {
+        message("Seleção alterada", "A lista mudou. Selecione novamente antes de executar.");
+        return;
+    }
+    sfm_diag::write("ACAO", labels[choice]);
+    using C = sfm::ui::actions::Command;
+    switch (commands[choice]) {
+        case C::Copy: doCopyMove(false); break;
+        case C::Move: doCopyMove(true); break;
+        case C::SelectAll: selectAllInActivePane(); break;
+        case C::ClearAll: clearActiveSelection(); break;
+        case C::Delete: doDelete(); break;
+        case C::Rename: doRename(); break;
+        case C::CompressZip: {
+            if (pane.drive) break;
+            int compression = modal("Compactar em ZIP", "Escolha o modo de compactação",
+                {"Cancelar", "Rápida", "Sem compressão"}, 1);
+            if (compression > 0) doCompressZip(compression == 1 ? 1 : 0);
+            break;
+        }
+        case C::ExtractZip: extractSelectedZips(); break;
     }
 }
 
@@ -1899,6 +2059,7 @@ static void dispatch(int id) {
 static void movePane(Pane& p, int delta) {
     if (p.items.empty()) return;
     p.cur = std::max(0, std::min((int)p.items.size() - 1, p.cur + delta));
+    p.contextFocused = true;
     p.ensureVisible();
 }
 
@@ -1912,8 +2073,16 @@ static void handleInput() {
     if (d & HidNpadButton_Plus) { g_quit = true; return; }
     if (d & HidNpadButton_A) { dispatch(B_OPEN); return; }
     if (d & HidNpadButton_B) { dispatch(B_UP); return; }
-    if (d & HidNpadButton_Y) { dispatch(B_MARK); return; }
-    if (d & HidNpadButton_X) { dispatch(B_ACT); return; }
+    if (d & HidNpadButton_Y) {
+        if (h & HidNpadButton_ZL) selectionMenu(); // seleção avançada sem poluir o menu X
+        else dispatch(B_MARK);
+        return;
+    }
+    if (d & HidNpadButton_X) {
+        if (h & HidNpadButton_ZL) doProperties(); // atalho para propriedades detalhadas
+        else dispatch(B_ACT);
+        return;
+    }
     if (d & (HidNpadButton_L | HidNpadButton_R)) { dispatch(B_PANE); return; }
     if (d & HidNpadButton_Minus) { dispatch(B_CLOUD); return; }
     if (d & HidNpadButton_Left) active = 0;
@@ -1956,6 +2125,7 @@ static void handleInput() {
                     if (active == pi && p.cur == idx) { openCur(); return; }
                     active = pi;
                     p.cur = idx;
+                    p.contextFocused = true;
                 } else active = pi;
             } else active = pi;
         }
