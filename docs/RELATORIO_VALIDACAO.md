@@ -1,59 +1,81 @@
-# Validação — Missão 3 (05/11/2026)
+# Validação — Missão 3.1
 
-## Escopo e estado inicial
+## Estado inicial confirmado
 
-Revisão experimental **0.10.9** na branch `codex/reorganizacao-estabilizacao`, PR #1 preservado. Base limpa inicial: `97382fc9d2cbee8f9dddabafccf3933da52a486a`; CI anterior 42113511214 aprovado. Main permanece em `db81e91ff73852a933f8c93a5d4177c3a98de2f0`. Relatórios das [Missões 1](historico/VALIDACAO_MISSAO_1.md) e [2](historico/VALIDACAO_MISSAO_2.md) preservados.
+Branch `codex/reorganizacao-estabilizacao` limpa em `b9f104a41009afc910907e87d50e5d35f102e64a`, PR #1 aberto/sem merge; Actions 42122757086 aprovado. Main em `db81e91ff73852a933f8c93a5d4177c3a98de2f0`. Suíte inicial reexecutada com NRO 0.10.9: 72/72 aprovados. Missões [1](historico/VALIDACAO_MISSAO_1.md), [2](historico/VALIDACAO_MISSAO_2.md) e [3](historico/VALIDACAO_MISSAO_3.md) preservadas.
 
-O escopo é persistência/autenticação Drive e seus testes/documentos. Não foram alterados logotipo, organização estabilizada, operações pessoais, FTP ou ZIP. Sem merge e sem Release.
+## Causas e implementação
 
-## Causa comprovada e hipótese física
+FTP: duas inicializações independentes de socketInitializeDefault e encerramentos independentes entre FTP/Drive. Libnx recusa a segunda inicialização de soc:; o conflito foi reproduzido com fronteira SDK simulada. O Result do relato físico não foi recebido, portanto outras falhas de memória/serviço/Wi-Fi continuam possíveis. O gerenciador compartilhado corrige a posse e registra Result real, módulo/descrição e contexto de applet/memória. [Detalhes](FTP.md).
 
-Um executável da base anterior com rename recusando destino existente reproduziu “Falha ao salvar login no cartão SD.” ao receber HTTP 200 e substituir token fictício existente. O arquivo anterior permaneceu intacto. A leitura da fonte oficial do libnx 4.12.0 confirmou a diferença de rename, fsync via fsFileFlush e lstat via stat. SDK efetivo: libnx 4.12.0-1, devkitA64 r29.2-1.
+Versão: o NRO anterior contém NACP 0.10.9. A leitura 0.10.8 no console não foi reproduzida com aquele binário; caminho/cópia antiga permanecem hipóteses. Foram protegidos VERSION, geração NACP por conteúdo, identificação em execução e pacote; acrescentada inspeção somente leitura de cópias. [Detalhes](VERSAO_E_INSTALACAO.md).
 
-Isso comprova uma incompatibilidade condicional. Não havia errno do relato do Lite, portanto não prova qual operação falhou no cartão daquele console. Diretórios, espaço, permissões, escrita, flush, fechamento e releitura continuam hipóteses físicas. Detalhes: [contrato de persistência](GOOGLE_DRIVE_PERSISTENCIA.md).
+Drive: menu completo, preferência, restauração, desconexão, reconexão, troca com commit verificado/cancelamento e esquecimento seletivo. PKCE S256/state, estados distintos e identidade opcional. Arquivo único de conta tem precedência sobre legados preservados; sem exclusão automática por falha OAuth. Slots continuam após 127; cópias não são expurgadas sem ação explícita. [Contrato](GOOGLE_DRIVE_PERSISTENCIA.md).
 
-## Resultados desta revisão
+## Validações por etapa
 
-**72/72 testes passaram com o NRO novo, sem casos ignorados**. A suíte anterior à compilação reconheceu 72 casos: 70 passaram e dois dependentes de binário foram explicitamente ignorados. A revisão documental encontrou inicialmente uma frase histórica removida do roadmap; ela foi restaurada e a execução completa foi repetida com sucesso.
+- Base: 72/72 testes com NRO anterior, antes das alterações.
+- Rede: cinco testes novos de ciclo de vida e compilação nativa; 77/77 casos com o NRO da etapa.
+- Contas: 41 testes de rede/Drive; compilação nativa intermediária de 833.240 bytes e 97/97 casos com NRO.
+- Final 0.10.10: **106/106 testes aprovados com NRO novo, zero reprovados/ignorados**; execução de 53,406 s. Antes do build: 106 reconhecidos, 104 aprovados e dois dependentes de NRO explicitamente ignorados, 52,851 s.
 
-| Verificação | Resultado desta execução |
-| --- | --- |
-| `bash scripts/build.sh` | Suíte no host, build real, validação NRO, suíte com NRO e pacote concluídos |
-| Suíte anterior ao build | 72 casos, 70 aprovados/2 ignorados; 27,888 s |
-| Suíte com NRO | 72 aprovados, zero ignorados; 28,875 s |
-| Armazenamento | 14 métodos com subcasos de falha; rename sem sobrescrita, rollback/recuperação |
-| Rede/Drive/FTP | 25 testes; primeiro login/renovação, retry, erro SD após HTTP 200 e preservação de dados fictícios |
-| NRO | 800.472 bytes; NRO0, segmentos/ASET, JPEG/NACP, título e versão 0.10.9 aprovados |
-| Distribuição | ZIP/lista fechada, checksums e repetição determinística do pacote aprovados pela suíte e conferência dos sidecars |
-| Documentação | 24 arquivos ativos, links locais/âncoras/imagens válidos; Markdownlint em 23 arquivos, zero erros |
-| Workflows | actionlint 1.7.7 aprovado; CI existente mantido, inclui novos testes automaticamente e publica `dist/*` |
-| `git diff --check` | Aprovado |
-| Ícone | Original preservado e comparado byte a byte no NRO |
+## Compilação final e artefatos
 
-Compilação pelo `/workspace/sfm-environment/build.sh` em cópia descartável, com imagem:
+`bash scripts/build.sh` executou suíte no host, `/workspace/sfm-environment/build.sh`, validação NRO, suíte com binário e pacote. Build nativo libnx 4.12.0-1/devkitA64 r29.2-1, imagem fixada:
 
 ```text
 devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
 ```
 
-Hashes desta compilação local:
+| Verificação | Resultado observado |
+| --- | --- |
+| NRO/NACP final | 833.240 bytes, DisplayVersion 0.10.10, título Switch File Manager, NRO0/segmentos/ASET aprovados |
+| Testes com binário | 106/106 aprovados; regressões de rede, protocolo, contas, arquivos, ZIP, logs, versão e distribuição |
+| Ícone | Hash oficial preservado e bytes comparados dentro do NRO |
+| Pacote | Lista fechada, ZIP íntegro, manifesto com caminho, ausência de segredos fictícios e checksums aprovados |
+| Documentação | 26 arquivos ativos com links/âncoras/imagens válidos; Markdownlint em 25 arquivos, zero erros |
+| Workflows | actionlint 1.7.7 aprovado; workflows existentes incluem novos testes automaticamente |
+| Inspeção instalada | NRO local identificado como 0.10.10; duplicados antigos detectados em fixture somente leitura |
+| `git diff --check` | Aprovado |
 
 ```text
-SwitchFileManager.nro (800472 bytes)
-726f9e8e4fb7e6f147f42fb6f31800a0b771d0f374d931b2f3a654a8ed840338
+SwitchFileManager.nro — 833240 bytes
+SHA-256: 6c2c1f58233b588cef3435ca58cb66ff942a973e04256006e6ee1ed36969ad61
 
 assets/icon.jpg
-858ebcb92444859e77ba2485a9532bedda25254ddc00d3fca72517eb5ff38cca
+SHA-256: 858ebcb92444859e77ba2485a9532bedda25254ddc00d3fca72517eb5ff38cca
 ```
 
-Avisos restantes são de funções estáticas não usadas em stb_truetype e suporte de grandes arquivos em miniz; nenhum erro de compilação. Nenhum fonte precisou ser reescrito pelo build. Builds em diretórios distintos podem ter hash próprio por informações de debug; conferir o checksum que acompanha cada artefato.
+Avisos normais do build vêm de funções estáticas não usadas em stb_truetype e suporte a grandes arquivos em miniz. Nenhum erro de compilação. Builds remotos podem ter hash diferente por caminhos de debug; conferir o sidecar do download específico.
 
-## GitHub e executável experimental
+### Conferência nativa adicional do NACP
 
-O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) recebe os commits desta missão sem substituir o histórico. O [GitHub Actions](https://github.com/TemudjinBR/switch-file-manager/actions/workflows/build.yml) associa resultado, SHA validado e download `SwitchFileManager-validado`. O artefato contém NRO, ZIP para SD e checksums, sem configurações/credenciais. O resumo do PR identifica a execução remota final; um artefato de Actions não é uma Release.
+Na cópia descartável já compilada, nacptool real gerou um NACP 0.10.8 e recebeu timestamp futuro intencional. Em seguida, make foi executado com APP_VERSION=0.10.8. O NRO resultante foi extraído/validado como **0.10.10**, com o mesmo SHA-256 final. Fontes, headers, Makefile e VERSION permaneceram idênticos. O aviso de clock skew nessa reprodução é esperado pelo timestamp futuro deliberado; a conferência posterior do conteúdo NACP/NRO passou.
 
-Não houve alteração de main, merge, force-push ou publicação de Release.
+### Reprodução do FTP anterior
 
-## Limites físicos
+Foi compilado wifi_transfer.cpp da base b9f104a com a fronteira SDK simulada. Após iniciar sockets como um consumidor anterior, o FTP antigo recusou inicializar e retornou exatamente “Falha ao inicializar a rede”. A implementação nova passou pelas transferências/ciclos compartilhados. Esse experimento não produz o Result real do Switch nem transforma a hipótese física em causa exclusiva.
 
-Não houve teste em Nintendo Switch, Google real, SD do proprietário, FAT32/exFAT real ou perda elétrica. O sucesso no host e a compilação não aprovam o login no hardware. A matriz física inclui primeira autorização, token existente/rotacionado, encerramento/reabertura, renovação, desconexão, nova tentativa e diagnóstico real de etapa/errno, usando dados de teste sem operações destrutivas.
+## Arquivos e responsabilidades alterados
+
+| Local | Alteração |
+| --- | --- |
+| src/network/socket_runtime.cpp, include/network/socket_runtime.h | Posse compartilhada e diagnóstico SDK |
+| src/network/wifi_transfer.cpp | Integração do FTP com o ciclo comum |
+| src/cloud/gdrive.cpp, include/gdrive.h | Estado/transação de conta, preferência, OAuth e erros |
+| src/cloud/credential_store.cpp, include/cloud/credential_store.h | Slots descobertos, recuperação e exclusão seletiva explícita |
+| src/security/oauth.cpp, include/security/oauth.h | Nonces e PKCE S256 |
+| src/app/main.cpp | Menu, confirmações, painéis, restauração e identificação |
+| VERSION, Makefile | Candidata 0.10.10 e NACP autoritativo |
+| scripts/package.py, scripts/inspect_installation.py | Instalação identificável e inspeção somente leitura |
+| tests/host, tests/stubs, testes Python novos/ampliados | Fronteiras fictícias e regressão real dos módulos |
+| .gitignore | Estado de conta/cópias fora do Git |
+| README, CHANGELOG, docs, release-notes/v0.10.10.md | Guias, evidências, limites e continuidade |
+
+Os arquivos de FTP de protocolo, ZIP, logo oficial e terceiros não foram reescritos. A estrutura modular permanece; não houve acesso ao projeto separado Switch-Manager, dados pessoais ou credenciais reais.
+
+## GitHub e limitações
+
+O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) recebe os commits sem force-push. O resultado remoto/artefato da revisão exata fica no PR e no [Actions](https://github.com/TemudjinBR/switch-file-manager/actions/workflows/build.yml), com NRO experimental, ZIP e checksums. Sem merge, modificação direta de main ou Release.
+
+Não houve teste físico no Lite, cartão pessoal, TLS Google real ou energia do SD. A matriz em [TESTES.md](TESTES.md) exige modo applet/memória completa, versão/caminho, FTP antes/depois de Drive, preferência e reinício, troca/cancelamento e esquecimento com conta/dados de teste. Nenhum resultado no host comprova esses cenários no hardware.

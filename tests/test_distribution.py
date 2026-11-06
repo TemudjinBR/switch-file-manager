@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from package import package, SD_PATH
 from validate_nro import validate
 from version import read_version
+from inspect_installation import inspect
 
 
 def minimal_nro():
@@ -65,6 +66,11 @@ class DistributionTests(unittest.TestCase):
             self.assertEqual(z.read(SD_PATH), Path(nro).read_bytes())
             manifest = json.loads(z.read('manifest.json'))
             self.assertEqual(manifest['versao'], read_version())
+            self.assertEqual(manifest['caminho_instalacao'], SD_PATH)
+            instructions = z.read('LEIA-ME.txt').decode()
+            self.assertIn(SD_PATH, instructions)
+            self.assertIn(read_version(), instructions)
+            self.assertIn(digest, instructions)
             self.assertEqual(manifest['nro_sha256'], digest)
             self.assertIn(digest, z.read('SHA256SUMS').decode())
             self.assertIsNone(z.testzip())
@@ -82,3 +88,46 @@ class DistributionTests(unittest.TestCase):
         validate(nro, read_version())
         with tempfile.TemporaryDirectory() as directory:
             self.check_package(nro, directory)
+
+    def test_installation_inspector_finds_old_duplicate_without_modifying_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            current = root / 'switch/Switch File Manager/SwitchFileManager.nro'
+            current.parent.mkdir(parents=True)
+            current.write_bytes(minimal_nro())
+            old = root / 'switch/SwitchFileManager.nro'
+            old_data = bytearray(minimal_nro())
+            size = struct.unpack_from('<I', old_data, 0x18)[0]
+            nacp_off = struct.unpack_from('<Q', old_data, size + 24)[0]
+            start = size + nacp_off + 0x3060
+            old_data[start:start+16] = b'0.0.1' + b'\0' * 11
+            old.write_bytes(old_data)
+            result = inspect(root)
+            self.assertTrue(result['duplicado'])
+            self.assertEqual(sorted(x['corresponde'] for x in result['copias']), [False, True])
+            self.assertEqual(old.read_bytes(), bytes(old_data))
+            self.assertEqual(current.read_bytes(), minimal_nro())
+
+    def test_nacp_version_is_extracted_directly_from_compiled_asset(self):
+        # A fixture é verificada sempre; o caso compilado também roda quando --nro é fornecido.
+        data = Path(os.environ['SFM_TEST_NRO']).read_bytes() if os.environ.get('SFM_TEST_NRO') else minimal_nro()
+        size = struct.unpack_from('<I', data, 0x18)[0]
+        start, length = struct.unpack_from('<QQ', data, size + 24)
+        self.assertEqual(length, 0x4000)
+        embedded = data[size+start+0x3060:size+start+0x3070].split(b'\0')[0].decode()
+        self.assertEqual(embedded, (ROOT / 'VERSION').read_text().strip())
+
+    def test_distribution_excludes_authentication_and_private_fixture_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'VERSION').write_text(read_version())
+            secrets = ['fictional-client-secret-never-package', 'fictional-user-refresh-never-package']
+            (root / 'google.json').write_text(secrets[0])
+            (root / 'token.txt').write_text(secrets[1])
+            (root / 'drive-account.json.sfm-old-000').write_text(secrets[1])
+            nro = root / 'test.nro'; nro.write_bytes(minimal_nro())
+            archive = package(nro, root / 'dist', root=root)
+            with zipfile.ZipFile(archive) as z:
+                for name in z.namelist():
+                    for secret in secrets:
+                        self.assertNotIn(secret.encode(), z.read(name))

@@ -1,4 +1,5 @@
 #include "wifi_transfer.h"
+#include "network/socket_runtime.h"
 #include "sfm_diag.h" // SFM_DIAG_0107
 #include <switch.h>
 #include <sys/socket.h>
@@ -504,14 +505,14 @@ unsigned directoryListings(){return listingsDone.load();}
 unsigned fileChanges(){return changesDone.load();}
 std::string lastActivity(){std::lock_guard<std::mutex> guard(eventLock);return lastEvent;}
 bool start(std::string& error) {
+    error.clear();
     if (active) return true;
     if (!netReady) {
-        Result status = socketInitializeDefault();
-        if (R_FAILED(status)) { error = "Falha ao inicializar a rede"; return false; }
+        if (!sfm::net::acquire(sfm::net::Client::Ftp, error)) return false;
         netReady = true;
     }
     listener = socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0) { error = "Falha ao criar o socket FTP"; socketExit(); netReady = false; return false; }
+    if (listener < 0) { error = "Falha ao criar o socket FTP"; sfm::net::release(sfm::net::Client::Ftp); netReady = false; return false; }
     int yes = 1; setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -524,7 +525,7 @@ bool start(std::string& error) {
     if (bind(listener, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(listener, 4) != 0) {
         close(listener); listener = -1;
         error = "Porta FTP 2121 indisponivel";
-        socketExit(); netReady = false; return false;
+        sfm::net::release(sfm::net::Client::Ftp); netReady = false; return false;
     }
 #ifdef HOST_TEST
     sockaddr_in local{};
@@ -548,13 +549,13 @@ bool start(std::string& error) {
 #endif
     if (!ipOK) {
         close(listener); listener = -1;
-        socketExit(); netReady = false;
+        sfm::net::release(sfm::net::Client::Ftp); netReady = false;
         error = "Nao foi possivel detectar o IP do Wi-Fi";
         return false;
     }
     sockaddr_in bound{}; socklen_t boundSize = sizeof(bound);
     if (getsockname(listener, (sockaddr*)&bound, &boundSize) != 0) {
-        close(listener); listener = -1; socketExit(); netReady = false;
+        close(listener); listener = -1; sfm::net::release(sfm::net::Client::Ftp); netReady = false;
         error = "Falha ao consultar porta FTP"; return false;
     }
     address = "ftp://" + std::string(inet_ntoa(local.sin_addr)) + ":" + std::to_string(ntohs(bound.sin_port));
@@ -573,7 +574,7 @@ void stop() {
     }
     for(auto& slot:clients)if(slot.thread.joinable())slot.thread.join();
     if (listener >= 0) { close(listener); listener = -1; }
-    if (netReady) { socketExit(); netReady = false; }
+    if (netReady) { sfm::net::release(sfm::net::Client::Ftp); netReady = false; }
     address.clear();
 }
 } // namespace wifi

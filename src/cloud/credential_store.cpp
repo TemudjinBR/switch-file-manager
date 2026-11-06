@@ -8,12 +8,17 @@
 #include <mutex>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <vector>
+#include <algorithm>
+#include <cstdint>
+#include <limits>
 
 namespace gd::persist {
 namespace {
 std::mutex storeLock;
 constexpr size_t maxBytes = 64 * 1024;
-constexpr int maxSlots = 128;
+
 #ifdef HOST_TEST
 std::vector<Fault> faults;
 unsigned writeLimit = 0;
@@ -95,9 +100,42 @@ bool ensure(const std::string& path, Error& error) {
 }
 
 std::string pathFor(const std::string& root, File file) { return root + "/" + filename(file); }
-std::string slotPath(const std::string& path, const char* label, int slot) {
-    char suffix[32]; snprintf(suffix, sizeof suffix, ".sfm-%s-%03d", label, slot);
+std::string slotPath(const std::string& path, const char* label, uint64_t slot) {
+    char suffix[64]; snprintf(suffix, sizeof suffix, ".sfm-%s-%03llu", label, static_cast<unsigned long long>(slot));
     return path + suffix;
+}
+
+struct Entry { std::string path; uint64_t slot; bool backup; };
+bool entries(const std::string& root, File file, std::vector<Entry>& out, Error& error, bool includeLegacyTemps = false) {
+    if (!before("listar-transacoes")) return fail(error, file, "listar-transacoes", errno);
+    DIR* dir = opendir(root.c_str());
+    if (!dir) {
+        if (errno == ENOENT) return true;
+        return fail(error, file, "listar-transacoes", errno);
+    }
+    const std::string name = filename(file);
+    bool ok = true;
+    for (;;) {
+        errno = 0;
+        dirent* entry = readdir(dir);
+        if (!entry) { if (errno) ok = fail(error, file, "listar-transacoes", errno); break; }
+        std::string value = entry->d_name;
+        bool backup = value.compare(0, name.size() + 9, name + ".sfm-old-") == 0;
+        bool pending = value.compare(0, name.size() + 9, name + ".sfm-new-") == 0;
+        if (!backup && !pending) {
+            if (includeLegacyTemps && (value == name || value.compare(0, name.size() + 5, name + ".tmp.") == 0))
+                out.push_back({root + "/" + value, 0, false});
+            continue;
+        }
+        std::string digits = value.substr(name.size() + 9);
+        if (digits.size() < 3 || digits.size() > 20 || digits.find_first_not_of("0123456789") != std::string::npos) continue;
+        errno = 0;
+        unsigned long long slot = strtoull(digits.c_str(), nullptr, 10);
+        if (errno == ERANGE) continue;
+        out.push_back({root + "/" + value, static_cast<uint64_t>(slot), backup});
+    }
+    if (closedir(dir) != 0 && ok) ok = fail(error, file, "fechar-diretorio", errno);
+    return ok;
 }
 
 bool read(const std::string& path, std::string& data, Error& error, File file, const char* phase) {
@@ -143,8 +181,13 @@ bool recover(const std::string& path, File file, Error& error) {
     if (!exists(path, current, error, file, "examinar-legado")) return false;
     if (current) return true;
     // Apenas backups reservados pela aplicação; nunca interpretar temporários como login válido.
-    for (int i = maxSlots - 1; i >= 0; --i) {
-        std::string backup = slotPath(path, "old", i);
+    const std::string root = path.substr(0, path.find_last_of('/'));
+    std::vector<Entry> candidates;
+    if (!entries(root, file, candidates, error)) return false;
+    std::sort(candidates.begin(), candidates.end(), [](const Entry& a, const Entry& b) { return a.slot > b.slot; });
+    for (const auto& candidate : candidates) {
+        if (!candidate.backup) continue;
+        std::string backup = candidate.path;
         bool found = false;
         if (!exists(backup, found, error, file, "examinar-recuperacao")) return false;
         if (!found) continue;
@@ -179,6 +222,7 @@ const char* filename(File file) {
         case File::Credentials: return "google.json";
         case File::Token: return "token.txt";
         case File::LoginState: return "login.disabled";
+        case File::Account: return "drive-account.json";
     }
     return "desconhecido";
 }
@@ -194,14 +238,14 @@ bool ensureDirectory(const std::string& root, Error& error) {
     return ensure(root, error);
 }
 
-bool load(const std::string& root, File file, std::string& data, Error& error) {
+bool load(const std::string& root, File file, std::string& data, Error& error, const char* phase) {
     std::lock_guard<std::mutex> guard(storeLock); error = {};
     const std::string path = pathFor(root, file);
     if (!recover(path, file, error)) return false;
     bool present = false;
     if (!exists(path, present, error, file, "examinar-legado")) return false;
     if (!present) { error.stage = "arquivo-ausente"; error.code = ENOENT; return false; }
-    return read(path, data, error, file, "legado");
+    return read(path, data, error, file, phase);
 }
 
 bool save(const std::string& root, File file, const std::string& data, Error& error) {
@@ -215,16 +259,15 @@ bool save(const std::string& root, File file, const std::string& data, Error& er
     std::string previous;
     if (hadPrevious && !read(path, previous, error, file, "anterior")) return false;
     if (hadPrevious && previous == data) return true; // releitura válida, sem desgaste/substituição desnecessária
-    int highest = -1;
-    for (int i = 0; i < maxSlots; ++i) {
-        bool old = false, pending = false;
-        if (!exists(slotPath(path, "old", i), old, error, file, "examinar-backups") ||
-            !exists(slotPath(path, "new", i), pending, error, file, "examinar-temporarios")) return false;
-        if (old || pending) highest = i;
+    std::vector<Entry> occupied;
+    if (!entries(root, file, occupied, error)) return false;
+    uint64_t next = 0;
+    for (const auto& entry : occupied) {
+        if (entry.slot == std::numeric_limits<uint64_t>::max()) return fail(error, file, "reservar-transacao", EOVERFLOW);
+        next = std::max(next, entry.slot + 1);
     }
-    if (highest + 1 >= maxSlots) return fail(error, file, "reservar-transacao", ENOSPC);
-    const std::string temporary = slotPath(path, "new", highest + 1);
-    const std::string backup = slotPath(path, "old", highest + 1);
+    const std::string temporary = slotPath(path, "new", next);
+    const std::string backup = slotPath(path, "old", next);
     if (!before("abrir-temporario")) return fail(error, file, "abrir-temporario", errno);
     int fd = open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (fd < 0) return fail(error, file, "abrir-temporario", errno);
@@ -268,6 +311,35 @@ bool save(const std::string& root, File file, const std::string& data, Error& er
     }
     sfm_diag::write("DRIVE_SD", std::string("arquivo=") + filename(file) + " etapa=gravado-e-relido errno=0");
     return true;
+}
+
+bool eraseMatching(const std::string& root, File file,
+                   const std::function<EraseDecision(const std::string&)>& decide,
+                   unsigned& unknown, Error& error) {
+    std::lock_guard<std::mutex> guard(storeLock); error = {};
+    std::vector<Entry> files;
+    if (!entries(root, file, files, error, true)) return false;
+    bool ok = true;
+    for (const auto& entry : files) {
+        Error operation;
+        std::string data;
+        bool found = false;
+        if (!exists(entry.path, found, operation, file, "examinar-esquecimento") ||
+            (found && !read(entry.path, data, operation, file, "esquecimento"))) {
+            if (ok) error = operation;
+            ok = false; continue;
+        }
+        if (!found) continue;
+        auto decision = decide(data);
+        if (decision == EraseDecision::Unknown) { ++unknown; continue; }
+        if (decision != EraseDecision::Remove) continue;
+        if (!before("apagar-autenticacao") || unlink(entry.path.c_str()) != 0) {
+            int code = errno;
+            if (ok) fail(error, file, "apagar-autenticacao", code);
+            ok = false;
+        }
+    }
+    return ok;
 }
 
 #ifdef HOST_TEST

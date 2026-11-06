@@ -20,3 +20,6 @@ token.txt.sfm-*
 login.disabled*
 google.json.tmp.*
 token.txt.tmp.*
+
+# Estado de conta e cópias com autorização OAuth
+drive-account.json*

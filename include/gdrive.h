@@ -24,11 +24,20 @@ void netExit();
 std::string lastError();
 enum class ErrorSource { None, Storage, Google, Network, Protocol, Other };
 ErrorSource lastErrorSource();
+enum class ConnectionState { Connected, Disconnected, AuthorizationRequired, InvalidAuthorization, NetworkError, StorageError };
+ConnectionState connectionState();
+std::string connectionLabel();
+std::string accountName();
 
 // ---- login
 bool isLoggedIn();
 bool hasCredentials();
 bool loadSavedLogin();   // tenta usar o login salvo (renova o token)
+bool reconnectSavedLogin();
+bool keepConnected();
+bool setKeepConnected(bool keep);
+bool autoLoginAvailable();
+bool forgetAccount(); // somente após confirmação explícita na UI; não revoga no Google
 bool logout();           // bloqueia login automático, preservando token/credencial
 
 // Servidor local (porta 8080) onde o usuário cola os dados pelo navegador do celular.

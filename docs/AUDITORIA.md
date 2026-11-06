@@ -77,3 +77,9 @@ Antes de editar: branch correta e checkout limpo em `97382fc9d2cbee8f9dddabafccf
 A leitura integral do fluxo de token identificou mkdir sem verificação, renomeação sobre destino existente, estado de login antecipado e exclusão de token em invalid_grant/logout. O SDK real usa libnx 4.12.0-1 e devkitA64 r29.2-1. A implementação oficial fsdev delega rename ao serviço de arquivos sem substituição POSIX, mapeando destino existente para EEXIST; fsync é implementado via fsFileFlush e lstat é alias de stat.
 
 Um executável do código anterior com wrapper de rename sem sobrescrita reproduziu a mensagem exata ao receber HTTP 200 e tentar trocar um token existente. Isso comprova o defeito condicional, sem acesso ao errno do relato físico. Foram corrigidos persistência, confirmação e mensagens; [detalhes](GOOGLE_DRIVE_PERSISTENCIA.md) e [resultados desta revisão](RELATORIO_VALIDACAO.md). Não houve teste no cartão do proprietário.
+
+## Complemento da Missão 3.1
+
+Base limpa b9f104a, PR #1 aberto e CI aprovado; 72/72 casos reexecutados com o NRO anterior. Foram lidos ciclo de sockets em FTP/Drive, implementação oficial libnx e metadados VERSION/Makefile/NACP/distribuição. Os dois consumidores inicializavam/encerravam soc: de forma independente, enquanto libnx recusa inicialização repetida. O NRO anterior contém DisplayVersion 0.10.9, portanto o relato 0.10.8 não foi atribuído ao build sem evidência do caminho/hash físico.
+
+Foram consultadas as páginas oficiais atuais de OAuth Desktop, migração loopback e dispositivos com entrada limitada; os links e limites constam do [guia Drive](GOOGLE_DRIVE.md). PKCE/state e gerenciamento transacional foram implementados sem trocar para um escopo que removesse acesso ao Drive existente. Rede compartilhada e geração NACP foram reforçadas com testes. O [relatório atual](RELATORIO_VALIDACAO.md) identifica os resultados e pendências físicas.

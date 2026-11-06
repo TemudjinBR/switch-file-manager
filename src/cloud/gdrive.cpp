@@ -5,6 +5,9 @@
 #include <switch.h>
 #endif
 #include "gdrive.h"
+#include "security/oauth.h"
+#include <set>
+#include "network/socket_runtime.h"
 #include "core/paths.h"
 #include "cloud/credential_store.h"
 #include "sfm_diag.h"
@@ -36,9 +39,15 @@ int testLoginPort = 8080;
 
 static std::string g_err;
 static ErrorSource g_errorSource = ErrorSource::None;
+static ConnectionState g_connectionState = ConnectionState::AuthorizationRequired;
 std::string lastError() { return g_err; }
 ErrorSource lastErrorSource() { return g_errorSource; }
-static void setErr(const std::string& e, ErrorSource source = ErrorSource::Other) { g_err = e; g_errorSource = source; }
+static void setErr(const std::string& e, ErrorSource source = ErrorSource::Other) {
+    g_err = e; g_errorSource = source;
+    if (source == ErrorSource::Storage) g_connectionState = ConnectionState::StorageError;
+    if (source == ErrorSource::Network) g_connectionState = ConnectionState::NetworkError;
+    if (source == ErrorSource::Google || source == ErrorSource::Protocol) g_connectionState = ConnectionState::AuthorizationRequired;
+}
 static void clearError() { g_err.clear(); g_errorSource = ErrorSource::None; }
 
 // ----------------------------------------------------------------- utilidades
@@ -292,36 +301,43 @@ static std::string jescape(const std::string& s) {
 
 // ----------------------------------------------------------------- conexão
 
+static bool g_netUp = false;
 #ifndef HOST_TEST
-static bool g_netUp = false, g_sslUp = false;
+static bool g_sslUp = false;
 static SslContext g_sslCtx;
 #endif
 
 bool netInit() {
-#ifdef HOST_TEST
-    return true;
-#else
     if (!g_netUp) {
-        Result rc = socketInitializeDefault();
-        if (R_FAILED(rc)) { setErr("Não foi possível iniciar a rede."); return false; }
+        std::string error;
+        if (!sfm::net::acquire(sfm::net::Client::Drive, error)) { setErr(error, ErrorSource::Network); return false; }
         g_netUp = true;
     }
+#ifndef HOST_TEST
     if (!g_sslUp) {
         Result rc = sslInitialize(3);
-        if (R_FAILED(rc)) { setErr("Não foi possível iniciar o serviço SSL."); return false; }
-        rc = sslCreateContext(&g_sslCtx, SslVersion_Auto);
-        if (R_FAILED(rc)) { sslExit(); setErr("Falha ao criar o contexto SSL."); return false; }
+        if (R_SUCCEEDED(rc)) {
+            rc = sslCreateContext(&g_sslCtx, SslVersion_Auto);
+            if (R_FAILED(rc)) sslExit();
+        }
+        if (R_FAILED(rc)) {
+            char code[32]; snprintf(code, sizeof code, "0x%08X", static_cast<unsigned>(rc));
+            setErr(std::string("Rede: falha ao iniciar SSL. Result=") + code, ErrorSource::Network);
+            sfm_diag::write("REDE", std::string("etapa=ssl-inicializar Result=") + code);
+            sfm::net::release(sfm::net::Client::Drive); g_netUp = false;
+            return false;
+        }
         g_sslUp = true;
     }
-    return true;
 #endif
+    return true;
 }
 
 void netExit() {
 #ifndef HOST_TEST
     if (g_sslUp) { sslContextClose(&g_sslCtx); sslExit(); g_sslUp = false; }
-    if (g_netUp) { socketExit(); g_netUp = false; }
 #endif
+    if (g_netUp) { sfm::net::release(sfm::net::Client::Drive); g_netUp = false; }
 }
 
 struct Resp {
@@ -602,12 +618,30 @@ static Creds g_creds;
 static std::string g_access, g_refresh;
 static time_t g_expiry = 0;
 static bool g_loginConfirmed = false;
+struct Account {
+    std::string key, client, refresh, legacyToken, name, permission;
+    std::set<std::string> purgeHashes;
+    bool keep = true, enabled = false, forgotten = false;
+};
+static Account g_account;
+static bool g_accountLoaded = false;
+static std::string g_durableAccount;
 struct PendingLogin {
-    std::string access, refresh;
+    std::string access;
+    Account account;
     time_t expiry = 0;
     bool valid = false;
 };
 static PendingLogin g_pendingLogin;
+static bool g_changing = false;
+struct PreviousSession {
+    Account account;
+    std::string access, refresh;
+    time_t expiry = 0;
+    bool confirmed = false;
+};
+static PreviousSession g_previous;
+static std::string g_oauthState, g_codeVerifier;
 
 static bool loadCreds() {
     if (g_creds.ok) return true;
@@ -620,9 +654,11 @@ static bool loadCreds() {
         persist::Error invalid; invalid.stage = "validar-credencial"; invalid.code = EINVAL;
         storageError("Credencial local inválida; arquivo preservado", invalid); return false;
     }
-    g_creds.id = in->str("client_id");
-    g_creds.secret = in->str("client_secret");
-    g_creds.redirect = "http://localhost";
+    const JV* id = in->get("client_id");
+    const JV* secret = in->get("client_secret");
+    g_creds.id = id && id->t == JV::Str ? id->s : "";
+    g_creds.secret = secret && secret->t == JV::Str ? secret->s : "";
+    g_creds.redirect = "http://localhost"; // compatibilidade com a credencial individual existente
     g_creds.ok = !g_creds.id.empty() && !g_creds.secret.empty();
     if (!g_creds.ok) {
         persist::Error invalid; invalid.stage = "validar-credencial"; invalid.code = EINVAL;
@@ -631,53 +667,208 @@ static bool loadCreds() {
     return g_creds.ok;
 }
 
-bool hasCredentials() { return loadCreds(); }
-bool isLoggedIn() { return g_loginConfirmed && !g_access.empty() && !g_refresh.empty(); }
-
-bool logout() {
-    clearError();
-    g_access.clear(); g_refresh.clear(); g_expiry = 0;
-    g_loginConfirmed = false; g_pendingLogin = {};
-    // Desconectar impede reutilização automática sem apagar token ou credencial.
-    return writeFile(persist::File::LoginState, "1");
+static std::string accountJson(const Account& value) {
+    std::string hashes = "[";
+    for (const auto& hash : value.purgeHashes) { if (hashes.size() > 1) hashes += ","; hashes += "\"" + jescape(hash) + "\""; }
+    hashes += "]";
+    return "{\"schema\":1,\"key\":\"" + jescape(value.key) + "\",\"client\":\"" + jescape(value.client) +
+        "\",\"refresh\":\"" + jescape(value.refresh) + "\",\"legacy\":\"" + jescape(value.legacyToken) +
+        "\",\"name\":\"" + jescape(value.name) + "\",\"permission\":\"" + jescape(value.permission) +
+        "\",\"keep\":" + (value.keep ? "true" : "false") + ",\"enabled\":" + (value.enabled ? "true" : "false") +
+        ",\"forgotten\":" + (value.forgotten ? "true" : "false") + ",\"cleanup\":" + hashes + "}";
+}
+static bool parseAccount(const std::string& text, Account& value) {
+    JV j;
+    if (!jparse(text, j) || j.t != JV::Obj || !j.get("schema") || j.get("schema")->t != JV::Num || j.get("schema")->n != 1) return false;
+    for (auto field : {"key", "client", "refresh", "legacy", "name", "permission"}) {
+        const JV* v = j.get(field); if (!v || v->t != JV::Str) return false;
+    }
+    for (auto field : {"keep", "enabled", "forgotten"}) {
+        const JV* v = j.get(field); if (!v || v->t != JV::Bool) return false;
+    }
+    value.key = j.str("key"); value.client = j.str("client"); value.refresh = j.str("refresh");
+    value.legacyToken = j.str("legacy"); value.name = j.str("name"); value.permission = j.str("permission");
+    value.purgeHashes.clear();
+    if (const JV* hashes = j.get("cleanup")) {
+        if (hashes->t != JV::Arr) return false;
+        for (const JV& hash : hashes->a) {
+            if (hash.t != JV::Str || hash.s.size() != 43) return false;
+            value.purgeHashes.insert(hash.s);
+        }
+    }
+    value.keep = j.get("keep")->b; value.enabled = j.get("enabled")->b; value.forgotten = j.get("forgotten")->b;
+    return !value.key.empty() && !(value.forgotten && (!value.refresh.empty() || !value.legacyToken.empty() || value.enabled));
+}
+static bool accountError(const char* stage, const char* message) {
+    persist::Error error; error.stage = stage; error.code = EINVAL;
+    storageError(message, error); return false;
+}
+static bool loadAccount() {
+    if (g_accountLoaded) return true;
+    std::string text;
+    persist::Error error;
+    if (persist::load(configDir(), persist::File::Account, text, error)) {
+        if (!parseAccount(text, g_account)) return accountError("validar-conta", "Estado da conta inválido; arquivo preservado");
+        g_durableAccount = text; g_accountLoaded = true; return true;
+    }
+    if (error.code != ENOENT) { storageError("Falha ao ler estado da conta", error); return false; }
+    Account legacy;
+    if (!sfm::oauth::randomToken(legacy.key)) { setErr("Não foi possível gerar identificador seguro da sessão."); return false; }
+    legacy.client = g_creds.id;
+    std::string disabled;
+    if (persist::load(configDir(), persist::File::LoginState, disabled, error)) {
+        if (disabled != "0" && disabled != "1") return accountError("validar-estado-login", "Estado de conexão inválido");
+    } else if (error.code != ENOENT) { storageError("Falha ao ler desconexão legada", error); return false; }
+    if (persist::load(configDir(), persist::File::Token, text, error)) {
+        legacy.refresh = trim(text);
+        if (legacy.refresh.empty()) return accountError("validar-token-salvo", "Login salvo vazio; arquivo preservado");
+        legacy.legacyToken = legacy.refresh;
+    } else if (error.code != ENOENT) { storageError("Falha ao ler token legado", error); return false; }
+    legacy.enabled = !legacy.refresh.empty() && disabled != "1";
+    g_account = std::move(legacy); g_accountLoaded = true;
+    // O primeiro registro novo pode restaurar este estado sem alterar os arquivos legados.
+    g_durableAccount = accountJson(g_account);
+    return true;
+}
+static bool storeAccount(const Account& value) {
+    std::string text = accountJson(value);
+    persist::Error error;
+    if (!persist::save(configDir(), persist::File::Account, text, error)) {
+        storageError("Falha ao salvar login no cartão SD.", error); return false;
+    }
+    std::string confirmed;
+    if (!persist::load(configDir(), persist::File::Account, confirmed, error, "confirmacao") || confirmed != text) {
+        if (!error.code) { error.stage = "comparar-conta-confirmacao"; error.code = EIO; }
+        persist::Error recovery;
+        if (!g_durableAccount.empty() && !persist::save(configDir(), persist::File::Account, g_durableAccount, recovery)) {
+            error.recoveryStage = recovery.stage; error.recoveryCode = recovery.code;
+        }
+        storageError("Conta não confirmada; restauração do estado anterior solicitada", error);
+        return false;
+    }
+    g_durableAccount = text;
+    return true;
 }
 
-static bool savedLoginEnabled() {
-    std::string disabled;
-    persist::Error error;
-    if (!persist::load(configDir(), persist::File::LoginState, disabled, error)) {
-        if (error.code == ENOENT) return true; // compatibilidade com instalações antigas
-        storageError("Falha ao consultar estado de conexão", error); return false;
+bool hasCredentials() { return loadCreds(); }
+bool isLoggedIn() { return !g_changing && g_loginConfirmed && !g_access.empty() && !g_refresh.empty(); }
+ConnectionState connectionState() { return g_connectionState; }
+std::string connectionLabel() {
+    switch (g_connectionState) {
+        case ConnectionState::Connected: return "Conectado";
+        case ConnectionState::Disconnected: return "Desconectado";
+        case ConnectionState::AuthorizationRequired: return "Autorização necessária";
+        case ConnectionState::InvalidAuthorization: return "Autorização expirada ou inválida";
+        case ConnectionState::NetworkError: return "Erro de rede";
+        case ConnectionState::StorageError: return "Erro de armazenamento no SD";
     }
-    if (disabled == "0") return true;
-    if (disabled == "1") { setErr("Conta desconectada neste Switch. Autorize novamente para entrar."); return false; }
-    persist::Error invalid; invalid.stage = "validar-estado-login"; invalid.code = EINVAL;
-    storageError("Estado de conexão inválido", invalid); return false;
+    return "Autorização necessária";
+}
+std::string accountName() { return g_account.name; }
+bool keepConnected() { return loadAccount() && g_account.keep; }
+bool setKeepConnected(bool keep) {
+    clearError();
+    if (!loadAccount()) return false;
+    Account next = g_account; next.keep = keep;
+    if (!storeAccount(next)) return false;
+    g_account = std::move(next); return true;
+}
+bool autoLoginAvailable() {
+    if (!loadCreds() || !loadAccount()) return false;
+    bool available = g_account.keep && g_account.enabled && !g_account.forgotten && !g_account.refresh.empty();
+    if (!available && !isLoggedIn()) g_connectionState = !g_account.refresh.empty() && !g_account.forgotten ? ConnectionState::Disconnected : ConnectionState::AuthorizationRequired;
+    return available;
+}
+
+static void clearSession() {
+    g_access.clear(); g_refresh.clear(); g_expiry = 0;
+    g_loginConfirmed = false; g_pendingLogin = {};
+}
+bool logout() {
+    clearError();
+    clearSession(); g_changing = false; g_previous = {};
+    g_connectionState = ConnectionState::Disconnected;
+    if (!loadAccount()) return false;
+    Account next = g_account; next.enabled = false;
+    if (!storeAccount(next)) return false;
+    g_account = std::move(next);
+    return true;
+}
+
+bool forgetAccount() {
+    clearError();
+    clearSession(); g_changing = false; g_previous = {};
+    g_connectionState = ConnectionState::Disconnected;
+    if (!loadAccount()) return false;
+    const Account target = g_account;
+    std::set<std::string> tokens;
+    if (!target.refresh.empty()) tokens.insert(target.refresh);
+    if (!target.legacyToken.empty()) tokens.insert(target.legacyToken);
+    Account forgotten = target;
+    forgotten.refresh.clear(); forgotten.legacyToken.clear(); forgotten.enabled = false;
+    forgotten.forgotten = true; forgotten.name.clear();
+    // Primeiro bloquear restauração, inclusive do legado, antes de apagar qualquer cópia.
+    if (!storeAccount(forgotten)) return false;
+    g_account = forgotten;
+    unsigned unknown = 0;
+    persist::Error error, first;
+    auto belongs = [&](const Account& value) {
+        return value.key == target.key || (!target.permission.empty() && value.permission == target.permission && value.client == target.client);
+    };
+    std::set<std::string> otherHashes;
+    auto collect = [&](const std::string& text) {
+        Account value;
+        if (parseAccount(text, value) && belongs(value)) {
+            if (!value.refresh.empty()) tokens.insert(value.refresh);
+            if (!value.legacyToken.empty()) tokens.insert(value.legacyToken);
+            forgotten.purgeHashes.insert(value.purgeHashes.begin(), value.purgeHashes.end());
+        } else if (parseAccount(text, value)) {
+            if (!value.refresh.empty()) otherHashes.insert(sfm::oauth::challenge(value.refresh));
+            if (!value.legacyToken.empty()) otherHashes.insert(sfm::oauth::challenge(value.legacyToken));
+        }
+        return persist::EraseDecision::Preserve;
+    };
+    if (!persist::eraseMatching(configDir(), persist::File::Account, collect, unknown, error)) {
+        storageError("Acesso bloqueado; não foi possível identificar todas as cópias", error); return false;
+    }
+    for (const auto& token : tokens) forgotten.purgeHashes.insert(sfm::oauth::challenge(token));
+    // Impressões SHA-256 permitem retomar uma exclusão parcial sem persistir novamente os tokens.
+    if (!storeAccount(forgotten)) return false;
+    g_account = forgotten;
+    auto accountDecision = [&](const std::string& text) {
+        Account value;
+        if (!parseAccount(text, value)) return persist::EraseDecision::Unknown;
+        bool match = belongs(value);
+        if (!match || (value.refresh.empty() && value.legacyToken.empty())) return persist::EraseDecision::Preserve;
+        if (!value.refresh.empty()) tokens.insert(value.refresh);
+        if (!value.legacyToken.empty()) tokens.insert(value.legacyToken);
+        return persist::EraseDecision::Remove;
+    };
+    bool ok = persist::eraseMatching(configDir(), persist::File::Account, accountDecision, unknown, error);
+    if (!ok) first = error;
+    auto tokenDecision = [&](const std::string& text) {
+        std::string hash = sfm::oauth::challenge(trim(text));
+        if (forgotten.purgeHashes.count(hash)) return persist::EraseDecision::Remove;
+        return otherHashes.count(hash) ? persist::EraseDecision::Preserve : persist::EraseDecision::Unknown;
+    };
+    if (!persist::eraseMatching(configDir(), persist::File::Token, tokenDecision, unknown, error)) {
+        if (ok) first = error;
+        ok = false;
+    }
+    if (!ok) { storageError("Acesso bloqueado, mas restaram dados locais de autenticação. Tente Esquecer novamente", first); return false; }
+    if (unknown) return accountError("identificar-copias", "Acesso bloqueado; cópias não atribuíveis à conta foram preservadas");
+    clearError(); g_connectionState = ConnectionState::Disconnected;
+    sfm_diag::write("DRIVE_AUTH", "etapa=esquecimento-local-concluido revogacao_remota=nao-executada");
+    return true;
 }
 
 static bool persistPendingLogin() {
     if (!g_pendingLogin.valid) { setErr("Não há autorização pendente para salvar."); return false; }
-    g_loginConfirmed = false;
-    if (!ensureConfigDir() || !writeFile(persist::File::Token, g_pendingLogin.refresh)) return false;
-    std::string confirmed;
-    if (!readFile(persist::File::Token, confirmed, false)) return false;
-    if (confirmed != g_pendingLogin.refresh) {
-        persist::Error mismatch; mismatch.stage = "comparar-token-confirmacao"; mismatch.code = EIO;
-        storageError("Login gravado não passou na releitura", mismatch); return false;
-    }
-    // Só libera o login salvo depois de gravar/reler o token correto.
-    persist::Error stateError;
-    std::string disabled;
-    if (persist::load(configDir(), persist::File::LoginState, disabled, stateError)) {
-        if (disabled != "0" && !writeFile(persist::File::LoginState, "0")) return false;
-    } else if (stateError.code != ENOENT) {
-        storageError("Falha ao verificar estado de conexão", stateError); return false;
-    }
-    g_access = g_pendingLogin.access;
-    g_refresh = g_pendingLogin.refresh;
-    g_expiry = g_pendingLogin.expiry;
-    g_loginConfirmed = true;
-    g_pendingLogin = {};
+    if (!ensureConfigDir() || !storeAccount(g_pendingLogin.account)) return false;
+    g_account = g_pendingLogin.account;
+    g_access = g_pendingLogin.access; g_refresh = g_account.refresh; g_expiry = g_pendingLogin.expiry;
+    g_loginConfirmed = true; g_pendingLogin = {}; g_changing = false; g_previous = {};
+    g_connectionState = ConnectionState::Connected;
     clearError();
     sfm_diag::write("DRIVE_AUTH", "etapa=login-gravado-relido-confirmado errno=0");
     return true;
@@ -701,7 +892,7 @@ static std::string apiErrorText(const std::string& body, int status) {
 
 static bool tokenRequest(const std::string& form, bool renewing) {
     clearError();
-    g_loginConfirmed = false;
+    if (!g_changing) g_loginConfirmed = false;
     Target tg = apiTarget(TOKEN_HOST);
     std::vector<std::string> h = {"Content-Type: application/x-www-form-urlencoded"};
     BodySrc b;
@@ -721,6 +912,7 @@ static bool tokenRequest(const std::string& form, bool renewing) {
         std::string safeCode = "erro_oauth";
         for (auto allowed : known) if (code == allowed) safeCode = allowed;
         setErr("Google: autorização não concluída (HTTP " + std::to_string(r.status) + "; " + safeCode + "). Dados salvos preservados.", ErrorSource::Google);
+        if (safeCode == "invalid_grant") g_connectionState = ConnectionState::InvalidAuthorization;
         sfm_diag::write("DRIVE_AUTH", "etapa=resposta-google http=" + std::to_string(r.status));
         return false;
     }
@@ -732,13 +924,39 @@ static bool tokenRequest(const std::string& form, bool renewing) {
         setErr("Google: resposta de autorização com campos inválidos.", ErrorSource::Protocol); return false;
     }
     candidate.access = access->s;
-    candidate.refresh = refresh ? refresh->s : std::string();
-    if (candidate.refresh.empty() && renewing) candidate.refresh = g_refresh;
-    if (candidate.access.empty() || candidate.refresh.empty()) {
+    candidate.account = renewing ? g_account : Account{};
+    candidate.account.keep = g_account.keep;
+    candidate.account.client = g_creds.id;
+    candidate.account.enabled = true;
+    candidate.account.forgotten = false;
+    if (candidate.account.key.empty() && !sfm::oauth::randomToken(candidate.account.key)) {
+        setErr("Não foi possível gerar identificador seguro da conta."); return false;
+    }
+    candidate.account.refresh = refresh ? refresh->s : std::string();
+    if (candidate.account.refresh.empty() && renewing) candidate.account.refresh = g_refresh;
+    if (candidate.access.empty() || candidate.account.refresh.empty()) {
         setErr("Google: resposta sem os dados necessários para manter o login. Arquivos anteriores preservados.", ErrorSource::Protocol); return false;
     }
     long seconds = atol(j.str("expires_in").c_str());
     candidate.expiry = time(nullptr) + (seconds > 0 ? seconds : 3000);
+    if (!renewing || candidate.account.permission.empty()) {
+        Resp identityResponse; StrSink identity;
+        std::vector<std::string> identityHeaders = {"Authorization: Bearer " + candidate.access};
+        if (httpRequest(apiTarget(API_HOST), API_HOST, "GET", "/drive/v3/about?fields=user(displayName,permissionId)", identityHeaders, nullptr, nullptr, identityResponse, identity) && identityResponse.status == 200) {
+            JV profile;
+            if (jparse(identity.s, profile)) {
+                const JV* user = profile.get("user");
+                if (user && user->t == JV::Obj) {
+                    candidate.account.permission = user->str("permissionId");
+                    std::string name = user->str("displayName");
+                    candidate.account.name.clear();
+                    for (unsigned char c : name) if (c >= 32 && c != 127) candidate.account.name += char(c);
+                    if (candidate.account.name.size() > 240) candidate.account.name.clear();
+                }
+            }
+        }
+        clearError(); // identificação é opcional; não altera resultado OAuth/persistência
+    }
     candidate.valid = true;
     g_pendingLogin = std::move(candidate);
     return persistPendingLogin();
@@ -757,24 +975,34 @@ static bool refreshToken() {
     return tokenRequest(form, true);
 }
 
-bool loadSavedLogin() {
+static bool restoreLogin(bool explicitRequest) {
     clearError();
     if (g_pendingLogin.valid) return persistPendingLogin();
+    if (g_changing) { setErr("Finalize ou cancele a troca de conta."); return false; }
     g_loginConfirmed = false;
-    if (!savedLoginEnabled() || !loadCreds()) return false;
-    std::string token;
-    if (!readFile(persist::File::Token, token)) return false;
-    token = trim(token);
-    if (token.empty()) {
-        persist::Error invalid; invalid.stage = "validar-token-salvo"; invalid.code = EINVAL;
-        storageError("Login salvo vazio; arquivo preservado", invalid); return false;
+    if (!loadCreds() || !loadAccount()) return false;
+    if (g_account.forgotten || g_account.refresh.empty()) {
+        g_connectionState = ConnectionState::AuthorizationRequired;
+        setErr("Autorização necessária. Use Entrar com Google."); return false;
     }
-    g_refresh = token;
+    if (!explicitRequest && (!g_account.keep || !g_account.enabled)) {
+        g_connectionState = ConnectionState::Disconnected;
+        setErr("Conta desconectada ou Manter conectado desativado. Use Reconectar conta salva."); return false;
+    }
+    if (!g_account.client.empty() && g_account.client != g_creds.id) {
+        g_connectionState = ConnectionState::AuthorizationRequired;
+        setErr("A credencial do aplicativo mudou. Autorize novamente; dados anteriores preservados."); return false;
+    }
+    g_refresh = g_account.refresh;
     return refreshToken();
 }
+bool loadSavedLogin() { return restoreLogin(false); }
+bool reconnectSavedLogin() { return restoreLogin(true); }
 
 static bool ensureToken() {
-    if (g_loginConfirmed && !g_access.empty() && time(nullptr) < g_expiry - 90) return true;
+    if (g_changing) { setErr("Operações remotas pausadas durante a troca de conta."); return false; }
+    if (!g_loginConfirmed) { setErr("Entre ou reconecte a conta antes de acessar o Drive."); return false; }
+    if (!g_access.empty() && time(nullptr) < g_expiry - 90) return true;
     return refreshToken();
 }
 
@@ -784,7 +1012,7 @@ static bool exchangeCode(const std::string& code) {
         return false;
     }
     std::string f = "code=" + urlEncode(code) + "&client_id=" + urlEncode(g_creds.id) + "&client_secret=" + urlEncode(g_creds.secret) +
-                    "&redirect_uri=" + urlEncode(g_creds.redirect) + "&grant_type=authorization_code";
+                    "&redirect_uri=" + urlEncode(g_creds.redirect) + "&code_verifier=" + urlEncode(g_codeVerifier) + "&grant_type=authorization_code";
     if (!tokenRequest(f, false)) return false;
     if (g_refresh.empty()) { setErr("O Google não devolveu a permissão de acesso contínuo. Tente de novo."); return false; }
     return true;
@@ -797,7 +1025,10 @@ static bool apiCall(const std::string& method, const std::string& host, const st
     if (!ensureToken()) return false;
     std::vector<std::string> h = extra;
     h.push_back("Authorization: Bearer " + g_access);
-    if (!httpRequest(apiTarget(host), host, method, path, h, body, wp, r, sink)) return false;
+    if (!httpRequest(apiTarget(host), host, method, path, h, body, wp, r, sink)) {
+        if (g_err != "Cancelado.") setErr("Rede: " + g_err, ErrorSource::Network);
+        return false;
+    }
     if (r.status == 401 && allowRetry) {
         g_expiry = 0;
         return apiCall(method, host, path, extra, body, wp, r, sink, false);
@@ -1024,7 +1255,8 @@ static std::string htmlHead() {
 
 static std::string authUrl() {
     return std::string("https://") + AUTH_HOST + "/o/oauth2/v2/auth?client_id=" + urlEncode(g_creds.id) +
-           "&redirect_uri=" + urlEncode(g_creds.redirect) + "&response_type=code&access_type=offline&prompt=consent&scope=" +
+           "&redirect_uri=" + urlEncode(g_creds.redirect) + "&response_type=code&access_type=offline&prompt=consent%20select_account&state=" + urlEncode(g_oauthState) +
+           "&code_challenge_method=S256&code_challenge=" + sfm::oauth::challenge(g_codeVerifier) + "&scope=" +
            urlEncode("https://www.googleapis.com/auth/drive");
 }
 
@@ -1061,6 +1293,13 @@ static std::string pageMain(const std::string& note) {
              "<form method=\"post\" action=\"/code\"><textarea name=\"u\" placeholder=\"http://localhost/?code=...\"></textarea>"
              "<button type=\"submit\">Enviar para o Switch</button></form></div>";
     }
+    size_t cursor = 0;
+    while ((cursor = h.find("<form ", cursor)) != std::string::npos) {
+        cursor = h.find('>', cursor);
+        if (cursor == std::string::npos) break;
+        std::string hidden = "<input type=\"hidden\" name=\"csrf\" value=\"" + g_oauthState + "\">";
+        h.insert(++cursor, hidden); cursor += hidden.size();
+    }
     h += "</body></html>";
     return h;
 }
@@ -1070,10 +1309,20 @@ static std::string pageDone(const std::string& msg) {
 }
 
 bool loginServerStart(std::string& urlForUser) {
-    if (g_srv >= 0) { close(g_srv); g_srv = -1; }
+    if (g_srv >= 0) { urlForUser = "http://" + g_ipText + ":" + std::to_string(
+#ifdef HOST_TEST
+        testLoginPort
+#else
+        8080
+#endif
+    ); return true; }
     clearError();
     if (!ensureConfigDir()) return false;
     loadCreds();
+    if (!loadAccount()) return false;
+    if (!sfm::oauth::randomToken(g_oauthState) || !sfm::oauth::randomToken(g_codeVerifier)) {
+        setErr("Não foi possível preparar autorização segura."); return false;
+    }
     g_srv = socket(AF_INET, SOCK_STREAM, 0);
     if (g_srv < 0) { setErr("Não foi possível abrir o servidor local."); return false; }
     int one = 1;
@@ -1106,11 +1355,21 @@ bool loginServerStart(std::string& urlForUser) {
 #endif
     g_ipText = inet_ntoa(ia);
     urlForUser = "http://" + g_ipText + ":" + std::to_string(port);
+    g_previous = {g_account, g_access, g_refresh, g_expiry, g_loginConfirmed};
+    g_changing = true; g_pendingLogin = {};
+    g_connectionState = ConnectionState::AuthorizationRequired;
     return true;
 }
 
 void loginServerStop() {
     if (g_srv >= 0) { close(g_srv); g_srv = -1; }
+    if (g_changing) {
+        g_account = g_previous.account; g_access = g_previous.access; g_refresh = g_previous.refresh;
+        g_expiry = g_previous.expiry; g_loginConfirmed = g_previous.confirmed;
+        if (g_loginConfirmed) { clearError(); g_connectionState = ConnectionState::Connected; }
+        g_pendingLogin = {}; g_previous = {}; g_changing = false;
+    }
+    g_oauthState.clear(); g_codeVerifier.clear();
 }
 
 static std::string formField(const std::string& body, const char* key) {
@@ -1196,12 +1455,19 @@ int loginServerPoll() {
     std::string body = req.substr(headEnd);
     int result = 0;
 
-    if (line.compare(0, 9, "POST /cre") == 0) {
+    if (line.compare(0, 5, "POST ") == 0 && (g_oauthState.empty() || formField(body, "csrf") != g_oauthState)) {
+        setErr("Pedido local não confirmado. Reabra a página de login.");
+        sendHtml(c, 400, pageMain(g_err)); result = -1;
+    } else if (line.compare(0, 11, "POST /cred ") == 0) {
         std::string json = formField(body, "j");
         JV j;
         const JV* in = nullptr;
         if (jparse(json, j)) { in = j.get("installed"); if (!in) in = j.get("web"); }
-        if (!in || in->str("client_id").empty() || in->str("client_secret").empty()) {
+        if (g_previous.confirmed) {
+            sendHtml(c, 400, pageMain("Desconecte antes de alterar a credencial do aplicativo; a troca de conta usa a credencial atual."));
+        } else if (!in || in->t != JV::Obj || !in->get("client_id") || in->get("client_id")->t != JV::Str ||
+                   !in->get("client_secret") || in->get("client_secret")->t != JV::Str ||
+                   in->str("client_id").empty() || in->str("client_secret").empty()) {
             sendHtml(c, 400, pageMain("Esse arquivo não parece ser a credencial do Google. Escolha o arquivo client_secret...json."));
         } else {
             clearError();
@@ -1220,7 +1486,15 @@ int loginServerPoll() {
         else { sendHtml(c, 400, pageMain(g_err)); result = -1; }
     } else if (line.compare(0, 10, "POST /code") == 0) {
         std::string code = extractCode(formField(body, "u"));
-        if (code.empty()) {
+        std::string returned = trim(formField(body, "u"));
+        size_t query = returned.find('?');
+        bool validState = query != std::string::npos && formField(returned.substr(query + 1), "state") == g_oauthState;
+        if (!validState) {
+            setErr("O retorno não corresponde a esta autorização. Copie a URL completa com code e state.");
+            sendHtml(c, 400, pageMain(g_err)); result = -1;
+        } else if (g_pendingLogin.valid) {
+            sendHtml(c, 400, pageMain("A autorização já foi recebida. Use Tentar salvar login novamente.")); result = -1;
+        } else if (code.empty()) {
             sendHtml(c, 400, pageMain("Não encontrei o código nesse texto. Copie o endereço completo da página que deu erro."));
         } else if (exchangeCode(code)) {
             sendHtml(c, 200, pageDone("Pronto! Você já pode voltar ao Switch."));

@@ -15,7 +15,10 @@ INCLUDES := include third_party/miniz third_party/stb
 
 APP_TITLE := Switch File Manager
 APP_AUTHOR := TemudjinBR
-APP_VERSION := $(shell python3 $(TOPDIR)/scripts/version.py)
+override APP_VERSION := $(shell python3 $(TOPDIR)/scripts/version.py)
+ifeq ($(strip $(APP_VERSION)),)
+$(error VERSION inválido ou indisponível)
+endif
 
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES)
@@ -64,6 +67,10 @@ DEPENDS := $(OFILES:.o=.d)
 all: $(OUTPUT).nro
 $(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp
 $(OUTPUT).elf: $(OFILES)
-$(OUTPUT).nacp: $(TOPDIR)/VERSION
+.PHONY: FORCE_NACP
+# Conferir o conteúdo em todo build também cobre arquivos copiados com timestamps antigos.
+$(OUTPUT).nacp: FORCE_NACP $(TOPDIR)/VERSION $(TOPDIR)/scripts/version.py
+	@nacptool --create "$(APP_TITLE)" "$(APP_AUTHOR)" "$(APP_VERSION)" $@.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; else mv $@.tmp $@; fi
 -include $(DEPENDS)
 endif

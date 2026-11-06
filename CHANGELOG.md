@@ -1,5 +1,17 @@
 # Histórico de alterações
 
+## 0.10.10 — experimental, Missão 3.1 (05/11/2026)
+
+- FTP e Drive compartilham inicialização/encerramento de sockets, com posse idempotente, retry e diagnóstico Result/contexto de applet/memória.
+- VERSION autoritativo mesmo com override antigo; NACP conferido por conteúdo, versão visível no menu Ações e caminho em log/manifesto/instruções.
+- Menu de contas: Entrar com Google, Manter conectado, Reconectar conta salva, Desconectar conta, Trocar de conta e Esquecer esta conta.
+- Troca só publica sessão após persistência/releitura; cancelamento restaura sessão anterior válida e sucesso limpa listagens dos painéis.
+- PKCE S256, state e nonce dos formulários; status de conexão e identificação opcional sem segredos nos logs.
+- Estado único em drive-account.json com precedência sobre legados preservados. Esquecimento local exige confirmação, identifica cópias e informa resíduos; não revoga no Google.
+- Slots descobertos em 64 bits removem o limite artificial de 128 sem expurgo automático.
+- Testes ampliados com rede compartilhada, contas fictícias, falhas SD, recuperação, exclusão parcial, PKCE, NACP, duplicados e distribuição sem segredos.
+- Causas físicas de FTP/versão ainda exigem confirmação pelo Result/caminho no Switch Lite; sem merge ou Release.
+
 ## 0.10.9 — experimental, persistência OAuth (05/11/2026)
 
 - Persistência separada com mkdir verificado, escrita parcial/EINTR, sincronização, fechamento e releitura.

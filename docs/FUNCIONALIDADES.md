@@ -1,6 +1,6 @@
 # Inventário completo de funcionalidades
 
-O inventário de menus foi consolidado na **0.10.8 experimental**, revisão `97382fc` da Missão 2 no PR #1. Na **0.10.9 experimental**, a Missão 3 acrescenta somente a persistência recuperável do login, origem dos erros e repetição local de salvamento; os demais menus/recursos continuam os mesmos. O [catálogo para o usuário](../README.md#funcionalidades) apresenta os recursos; este documento permite conferi-los no código.
+O inventário de menus foi consolidado na **0.10.8 experimental**, revisão `97382fc` da Missão 2 no PR #1. A Missão 3 acrescentou persistência recuperável. Na **0.10.10 experimental**, a Missão 3.1 acrescenta gerenciamento de contas, sockets compartilhados e identificação de versão, preservando as demais categorias. O [catálogo para o usuário](../README.md#funcionalidades) apresenta os recursos; este documento permite conferi-los no código.
 
 ## Como ler os estados
 
@@ -18,7 +18,7 @@ O inventário de menus foi consolidado na **0.10.8 experimental**, revisão `973
 | Seleção múltipla — implementado | `toggleMark`, `selectionMenu`, `Pane::marks`. Marcar todos visíveis, arquivos, pastas, inverter e limpar. As marcações de tipos são aditivas e respeitam o filtro; reload limpa as marcações. |
 | Organização/localização — implementado | `Pane::sortItems`, `applyFilter`, `sortMenu`, `favMenu`, `favoritesList`, `historyList`, `historyAdd`. Nome/tamanho/data/tipo, inversão, filtro local, atualização, favoritos e até 15 caminhos recentes salvos. Estado de ordenação/filtro é de sessão. |
 | Fila — implementado | `QueuedTransfer`, `enqueueTransfer`, `runTransferQueue`, `transferQueueMenu`, `QUEUE_LIMIT`. Até 20 tarefas, somente SD, copiar/mover, listar/executar/limpar e progresso. Em memória, sem persistência e sem transação de toda a tarefa. |
-| Google Drive — experimental | [gdrive.cpp](../src/cloud/gdrive.cpp): `loadCreds`, `tokenRequest`, `refreshToken`, `loginServerStart/Poll/Stop`, `listFolder`, `downloadFile`, `uploadFile`, `createFolder`, `renameItem`, `trashItem`, `logout`; main: `ensureDriveLogin`, `driveLoad`, `scanDriveTree`, `dlTree`, `ulTree`, `toggleDrive`, `cloudMenu`, `logoutAll`. Conta individual, OAuth manual, navegação/paginação, árvores SD↔Drive, pastas/nomes/lixeira, renovação e desconexão. Falha física relatada na 0.10.8; a 0.10.9 tem correção candidata e diagnósticos, ainda sem aprovação no hardware. Persistência isolada em [credential_store.cpp](../src/cloud/credential_store.cpp). |
+| Google Drive — experimental | [gdrive.cpp](../src/cloud/gdrive.cpp): `loadCreds`, `tokenRequest`, `refreshToken`, `loginServerStart/Poll/Stop`, `listFolder`, `downloadFile`, `uploadFile`, `createFolder`, `renameItem`, `trashItem`, `logout`; main: `ensureDriveLogin`, `driveLoad`, `scanDriveTree`, `dlTree`, `ulTree`, `toggleDrive`, `cloudMenu`, `logoutAll`. Conta individual, OAuth manual, navegação/paginação, árvores SD↔Drive, pastas/nomes/lixeira, renovação e desconexão. Falha física relatada na 0.10.8; a 0.10.10 mantém a correção candidata e amplia os diagnósticos, ainda sem aprovação no hardware. Persistência isolada em [credential_store.cpp](../src/cloud/credential_store.cpp). |
 | FTP — implementado | [wifi_transfer.cpp](../src/network/wifi_transfer.cpp): `start`, `serve`, `session`, transferências e contadores; main: `wifiMenu`, `modal`, `drawMain`. Porta 2121, quatro clientes no código, leitura/escrita anônima, ativo/passivo, REST de download, eventos e refresh local. |
 | ZIP — implementado | [zipx.cpp](../src/archives/zipx.cpp): `inspect`, `compress`, `extract`; main: `zipMenu`, `showZipInfo`, `doCompressZip`, `doExtractZip`. Seleção local, modos rápido/sem compressão, destino atual/oposto, estatísticas, senha detectada/itens ignorados, CRC e cancelamento. |
 | Armazenamento/propriedades — implementado | `refreshSpace`, `propsText`, `doProperties`, `calcTree`, `doSpaceAnalyzer` em main. Total/livre/utilização SD, propriedades individuais e agregadas, arquivos/pastas, data quando disponível, até nove maiores itens imediatos. Totais podem ser incompletos; profundidade limitada no cálculo de propriedades. |
@@ -102,11 +102,18 @@ Abrir um ZIP também oferece Cancelar, Extrair aqui, Extrair no outro painel e I
 
 ### Google Drive e conta
 
+- Entrar com Google: autorização no navegador Android, com PKCE S256/state, sem senha no aplicativo.
+- Reconectar conta salva: usa refresh token local, inclusive após desconectar ou desativar restauração automática.
+- Manter conectado: ativado/desativado, persistido; controla restauração na próxima abertura.
 - Abrir o Google Drive neste painel **ou** Voltar este painel ao cartão SD, conforme estado.
-- Trocar de conta do Google, com confirmação Desconectar/Cancelar.
-- Diálogo de login: endereço local para o navegador do celular e Cancelar por B/toque.
+- Desconectar conta: confirmação; encerra sessão, bloqueia restauração e volta os painéis ao SD sem apagar tokens.
+- Trocar de conta: confirmação e autorização nova; suspende operações remotas e só publica a nova sessão após persistência. Cancelar restaura a anterior quando válida.
+- Esquecer esta conta: confirmação separada; bloqueia restauração antes de remover apenas cópias atribuídas à conta, informando falhas/resíduos. Não apaga arquivos no Drive nem revoga no Google.
+- Voltar: fecha o menu. No diálogo de login, B/toque cancela; o navegador oferece retry local se a gravação falhar.
 
-Voltar o painel ao SD conserva o login em memória. A desconexão confirmada chama `gd::logout`, grava `login.disabled=1` e volta os painéis Drive ao SD. Token e credencial são preservados; novo login confirmado libera o estado com `0`. Se o marcador não puder ser gravado, a UI avisa que a desconexão persistente falhou. A Missão 2 não executa essa ação sobre dados reais.
+O menu usa o modal existente para controles físicos, toque e rolagem. Estado: Conectado, Desconectado, Autorização necessária, Autorização expirada ou inválida, Erro de rede ou Erro de armazenamento no SD. Nome exibido quando `about.user.displayName` estiver disponível. A identificação não entra nos logs. O menu Ações também mostra `SFM_VERSION`.
+
+`gdrive.cpp`: `loadAccount`, `storeAccount`, `restoreLogin`, `setKeepConnected`, `forgetAccount`, `loginServerStop`. `credential_store.cpp`: transações sem sobrescrita, recuperação e exclusão seletiva explícita. `socket_runtime.cpp`: posse compartilhada por Drive/FTP. A fila existente continua somente local; a UI não permite gerenciar contas no meio de uma transferência remota síncrona.
 
 ### Transferência Wi-Fi e ações por contexto
 

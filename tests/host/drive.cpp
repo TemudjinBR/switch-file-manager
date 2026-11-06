@@ -24,14 +24,15 @@ int main(int argc, char** argv) {
         }
     }
     gd::persist::testFaults(std::move(faults));
-    if (command == "logout") {
-        bool ok = gd::logout();
+    if (command == "logout" || command == "forget" || command == "keep-on" || command == "keep-off") {
+        bool ok = command == "logout" ? gd::logout() : command == "forget" ? gd::forgetAccount() : gd::setKeepConnected(command == "keep-on");
         if (!ok) std::cerr << gd::lastError();
         return ok ? 0 : 1;
     }
     if (command == "serve") {
         if (argc < 5) return 2;
         gd::testLoginPort = std::atoi(argv[4]);
+        for (int i = 4; i < argc; ++i) if (std::string(argv[i]) == "--restore") gd::loadSavedLogin();
         std::string url;
         if (!gd::loginServerStart(url)) { std::cerr << gd::lastError(); return 1; }
         std::cout << url << std::endl;
@@ -43,17 +44,21 @@ int main(int argc, char** argv) {
                 if (action == "status") std::cout << "logged=" << gd::isLoggedIn()
                     << " source=" << static_cast<int>(gd::lastErrorSource()) << std::endl;
                 if (action == "clear-faults") gd::persist::testFaults({});
+                if (action == "state") std::cout << "state=" << gd::connectionLabel() << " keep=" << gd::keepConnected() << " name=" << gd::accountName() << std::endl;
+                if (action == "cancel") { gd::loginServerStop(); std::cout << "cancelled" << std::endl; }
+                if (action == "switch") { gd::loginServerStop(); bool ok = gd::loginServerStart(url); std::cout << "switch=" << ok << std::endl; }
+                if (action == "list") { std::vector<gd::Item> items; bool ok = gd::listFolder("root", items); std::cout << "list=" << ok << std::endl; }
             }
             gd::loginServerPoll();
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         gd::loginServerStop(); return 0;
     }
-    if (!gd::loadSavedLogin()) {
+    if (!(command == "reconnect" ? gd::reconnectSavedLogin() : gd::loadSavedLogin())) {
         std::cerr << gd::lastError();
-        std::cout << "logged=" << gd::isLoggedIn() << '\n'; return 1;
+        std::cout << "logged=" << gd::isLoggedIn() << '\n' << "state=" << gd::connectionLabel() << '\n'; return 1;
     }
-    bool ok = false;
+    bool ok = command == "reconnect";
     if (command == "list") {
         std::vector<gd::Item> items;
         ok = gd::listFolder("root", items);

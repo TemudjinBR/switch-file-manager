@@ -22,9 +22,14 @@ def package(nro, output, root=ROOT):
     (output / NRO_NAME).write_bytes(data)
     (output / (NRO_NAME + '.sha256')).write_text(f'{digest}  {NRO_NAME}\n', encoding='utf-8')
     manifest = json.dumps({'versao': version, 'nro_sha256': digest,
-                           'validacao_console': 'pendente'}, ensure_ascii=False, indent=2) + '\n'
+                           'validacao_console': 'pendente', 'caminho_instalacao': SD_PATH}, ensure_ascii=False, indent=2) + '\n'
     readme = ('Switch File Manager v' + version + '\n\n'
               'Extraia a pasta switch na raiz do microSD e abra pelo Homebrew Menu.\n'
+              'Executável deste pacote: ' + SD_PATH + '\n'
+              'Versão NACP conferida: ' + version + '; SHA-256: ' + digest + '\n'
+              'O menu Ações mostra a versão em execução; o log APP registra seu caminho.\n'
+              'Se aparecer outra versão, confira o caminho selecionado no Homebrew Menu.\n'
+              'Cópias em outros diretórios não são removidas automaticamente.\n'
               'As configurações existentes em switch/switch-manager são preservadas.\n'
               'Este pacote exige validação no console antes de uma Release pública.\n')
     archive = output / f'SwitchFileManager-v{version}.zip'

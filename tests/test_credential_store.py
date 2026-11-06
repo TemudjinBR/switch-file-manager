@@ -101,12 +101,13 @@ class CredentialStoreTests(unittest.TestCase):
         self.assertEqual(pending.read_text(), 'fictional-partial-to-preserve')
         self.assertEqual((self.config / 'token.txt.sfm-old-001').read_text(), 'fictional-existing')
 
-    def test_backup_capacity_fails_without_cleaning_user_data(self):
+    def test_slots_continue_after_127_without_cleaning_user_data(self):
         backup = self.config / 'token.txt.sfm-old-127'
         backup.write_text('fictional-backup-to-preserve')
-        self.run_store(success=False)
-        self.assertEqual(self.token.read_text(), 'fictional-existing')
+        self.run_store()
+        self.assertEqual(self.token.read_text(), 'fictional-refresh-new')
         self.assertEqual(backup.read_text(), 'fictional-backup-to-preserve')
+        self.assertEqual((self.config / 'token.txt.sfm-old-128').read_text(), 'fictional-existing')
 
     def test_credential_failure_preserves_existing_credential(self):
         credential = self.config / 'google.json'

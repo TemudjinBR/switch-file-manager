@@ -1,8 +1,8 @@
 # Roadmap
 
-## Etapa atual: persistência OAuth experimental 0.10.9
+## Etapa atual: rede, versão e contas experimentais 0.10.10
 
-As Missões 1/2 continuam preservadas. A Missão 3 corrige a substituição de arquivos OAuth para a semântica libnx, adiciona recuperação e diagnóstico SD sem apagar credenciais. A confirmação no Switch Lite ainda depende de teste físico para o relato “Falha ao salvar login no cartão SD.”.
+As Missões 1/2/3 continuam preservadas. A Missão 3.1 acrescenta ciclo compartilhado de sockets, versão identificável e gerenciamento de contas com PKCE/state e persistência verificada. A confirmação no Switch Lite ainda depende de teste físico para o relato “Falha ao salvar login no cartão SD.”.
 
 ## Base da reorganização e estabilização
 
@@ -15,10 +15,10 @@ A entrega desta etapa continua experimental até cumprir a matriz física em `TE
 
 ## Próximas mudanças pequenas
 
-1. Validar fisicamente a persistência candidata da v0.10.9 e identificar a chamada/errno caso o erro continue. Não presumir que a reprodução de EEXIST explica todos os cenários do SD.
+1. Validar fisicamente a persistência/contas candidatas da v0.10.10 e identificar a chamada/errno caso o erro continue. Não presumir que a reprodução de EEXIST explica todos os cenários do SD.
 2. Validar o NRO no Switch Lite com Atmosphère e registrar firmware, formato do SD e modo do Homebrew Menu.
 3. Exercitar transferências prolongadas, clientes simultâneos, cancelamento, SD cheio, retomada FTP e suspensão da aplicação.
-4. Modernizar OAuth para um fluxo suportado de aplicativo instalado, avaliando PKCE e retorno sem copiar código manualmente. Preservar compatibilidade dos dados existentes.
+4. Validar OAuth com o Google real e avaliar retorno sem cópia manual compatível com os escopos do gerenciador. PKCE/state já foram implementados; não confundir isso com homologação do fluxo Android↔Switch.
 5. Reforçar upload resumível Drive, confirmando offsets aceitos pela API e recuperação após desconexão. Testar TLS e contas reais de teste.
 6. Extrair modelo de painéis e controladores de ações com testes próprios, mantendo a UI atual.
 7. Evoluir logs para diagnóstico consultável na interface e exportação com revisão dos dados pessoais.

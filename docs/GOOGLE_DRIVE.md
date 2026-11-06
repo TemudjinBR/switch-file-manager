@@ -1,88 +1,69 @@
-# Google Drive e OAuth
+# Google Drive — contas e autorização experimental
 
-## Estado do recurso
-
-> **Importante:** nesta versão, cada usuário precisa criar credenciais OAuth próprias no Google Cloud. O recurso ainda é experimental. Não compartilhe credenciais nem códigos de autorização.
+**Estado: experimental na 0.10.10.** Navegação, transferências e gerenciamento de contas estão implementados e cobertos por API fictícia. SSL, autorização Google real e UI no Switch Lite ainda exigem validação física. Não se solicita senha Google no aplicativo, em logs ou ao proprietário.
 
 ## Falha de persistência relatada no Switch Lite
 
-**Relato da v0.10.8:** o proprietário conseguiu autorizar pelo navegador Android, mas o Switch Lite mostrou “O Google recusou: Falha ao salvar login no cartão SD.” e voltou ao login. Não foi recebido um errno da operação no hardware.
+Na v0.10.8 foi relatada **“Falha ao salvar login no cartão SD.”** depois da autorização pelo Android. O prefixo antigo “O Google recusou” era incorreto para falha local. A Missão 3 reproduziu a incompatibilidade de rename sobre destino existente e adicionou gravação verificada/recuperação. A chamada/errno exata que falhou no aparelho continua desconhecida. A Missão 3.1 preserva essa correção e acrescenta gerenciamento de contas. Ver [persistência](GOOGLE_DRIVE_PERSISTENCIA.md) e [validação](RELATORIO_VALIDACAO.md).
 
-A **0.10.9 experimental** implementa uma correção candidata: diretórios verificados, temporário exclusivo, escritas parciais/EINTR, sincronização, fechamento, releitura, substituição sem sobrescrever por rename e backup/rollback/recuperação. O erro local agora é identificado como **SD**, separado de respostas **Google** ou falhas de **Rede**. A causa exata no aparelho ainda não foi confirmada e não há aprovação física do novo NRO.
+## Menu Google Drive e conta
 
-O defeito de compatibilidade comprovado é a tentativa antiga de renomear temporário sobre `token.txt` existente: POSIX no host aceita, mas fsdev da libnx não oferece essa substituição. O teste com essa semântica reproduziu a falha antiga e passou com o novo algoritmo. O SDK desta execução, libnx 4.12.0, tem fsync ligado a `fsFileFlush`; portanto não se presume ausência genérica de sincronização.
+Acesse **X → Ações → Google Drive e conta**. O modal existente aceita ↑/↓, ZL/ZR, A/B, toque nas opções e arrasto para rolar.
 
-Os testes também injetam disco cheio, somente leitura, falhas de abertura, escrita, sincronização, fechamento, releitura, instalação e rollback, sem valores reais. Consulte a [investigação completa](GOOGLE_DRIVE_PERSISTENCIA.md) e o [relatório atual](RELATORIO_VALIDACAO.md). Os registros anteriores da Missão 2 permanecem no histórico.
+| Opção | Comportamento |
+| --- | --- |
+| Entrar com Google | Autoriza pelo navegador Android. Só confirma a conta após gravar e reler o estado completo. |
+| Reconectar conta salva | Renova o token local sem exigir nova autorização, quando o Google ainda a permite. Funciona após desconectar ou desativar Manter conectado. |
+| Manter conectado | Preferência persistente. Ativada: tenta restaurar sessão na abertura do aplicativo. Desativada: conserva autorização local, mas exige ação explícita para entrar. |
+| Abrir o Google Drive neste painel / Voltar este painel ao cartão SD | Altera o painel; voltar ao SD não desconecta. |
+| Desconectar conta | Confirmação; encerra sessão e impede restauração automática, sem excluir autorização ou arquivos. |
+| Trocar de conta | Confirmação e seletor Google; pausa operações remotas. Cancela sem trocar tokens ou listagens; sucesso limpa os painéis remotos anteriores e abre a raiz nova. |
+| Esquecer esta conta | Confirmação distinta; bloqueia restauração e remove dados locais atribuídos à conta, incluindo cópias. Preserva outras contas identificadas, arquivos pessoais e a credencial OAuth compartilhada do aplicativo. |
 
-### Quando a autorização chegou, mas a gravação falhou
+Estados exibidos: **Conectado**, **Desconectado**, **Autorização necessária**, **Autorização expirada ou inválida**, **Erro de rede** e **Erro de armazenamento no SD**. O nome da conta é consultado em `about.user.displayName`, quando disponível; não se grava identificação nos logs. A consulta opcional não invalida o login se estiver indisponível.
 
-A página mostra **SD**, a etapa e o errno, mantém o login não confirmado e oferece **Tentar salvar login novamente**. O botão repete somente a persistência/verificação local da autorização mantida em memória; não reutiliza o código OAuth já consumido nem exige nova chamada de token ao Google. Se o aplicativo for encerrado antes de salvar, essa autorização em memória se perde e pode ser necessária uma nova autorização; os arquivos anteriores e cópias de recuperação permanecem preservados.
+Desconectar/trocar só são acionáveis entre operações: as transferências Drive atuais são síncronas e a fila é somente local. Não existe uma fila remota em segundo plano para cancelar. Durante a autorização de troca, chamadas remotas são recusadas; B restaura a sessão anterior em memória quando ela continuava válida. Se o Google já a invalidou, os arquivos anteriores são preservados, mas não se promete reconexão.
 
-Não apagar ou formatar o diretório legado como diagnóstico. Não compartilhar o diretório completo, tokens, códigos ou credenciais.
+**Esquecer é local.** Não apaga arquivos do Drive e não afirma revogação no Google. Falhas de exclusão ou arquivos sem atribuição segura são informados; o aplicativo mantém o bloqueio de restauração e permite tentar Esquecer novamente. A credencial `google.json` identifica o aplicativo e pode servir a várias contas, portanto é preservada. Não há limpeza automática do diretório inteiro.
 
-## Capacidades implementadas, ainda experimentais
+## Entrar usando Android
 
-- Configuração individual de credencial e login por formulário local no celular.
-- Renovação de autorização e tentativa de usar login salvo.
-- Navegação de pastas e listagem paginada da API.
-- Download de arquivos e árvores de pastas para SD, com preflight e limite de profundidade no fluxo de download.
-- Upload de arquivos/pastas locais; arquivos usam o mecanismo resumível da API, com limitações de recuperação/offset ainda documentadas.
-- Criação de pastas, renomeação e envio de itens à lixeira.
-- Retorno de um painel ao SD e troca/desconexão da conta mediante confirmação. Retornar ao SD não é desconectar.
+1. Use console e smartphone na mesma rede Wi-Fi confiável; habilite Google Drive API no projeto OAuth individual, com cliente **Aplicativo para computador**. O aplicativo não fornece um client secret público ou serviço pago intermediário.
+2. Abra **Entrar com Google**. No Android, acesse a URL local exibida pelo Switch, porta 8080.
+3. Se solicitado, selecione o JSON de credencial individual. Nenhuma senha Google deve ser digitada nessa página local.
+4. Toque em **Entrar com o Google**, confira o aplicativo/projeto e autorize no site HTTPS do Google. A senha, se exigida, é fornecida somente ao Google.
+5. Preserve o fluxo manual existente: quando o navegador tentar abrir localhost, copie a URL completa de retorno, incluindo **code e state**, e cole no formulário local. O código isolado não é aceito nessa revisão.
+6. Aguarde a confirmação. Em erro **SD**, use **Tentar salvar login novamente** na mesma sessão; isso repete a gravação local, sem consumir outro código OAuth. Fechar o aplicativo perde o candidato ainda não salvo, preservando os arquivos anteriores.
 
-A listagem atual obtém id, nome, tipo e tamanho; não obtém data de modificação remota. O diálogo de propriedades não calcula tamanho total de pastas Drive. Favoritos e fila pertencem ao SD, sem integração remota nessa revisão.
+A preferência Manter conectado é ajustada no menu do Switch. Desconectar não a apaga, mas desativa a restauração da conta até reconexão explícita. Uma autorização nova precisa do próprio refresh token; nunca herda o token de outra conta.
 
-## Configuração no fluxo existente
+## Compatibilidade com o Google
 
-### 1. Criar credenciais OAuth
+A revisão consultou a documentação oficial atual: [Desktop Apps](https://developers.google.com/identity/protocols/oauth2/native-app), [migração de loopback](https://developers.google.com/identity/protocols/oauth2/resources/loopback-migration) e [dispositivos com entrada limitada](https://developers.google.com/identity/protocols/oauth2/limited-input-device). PKCE S256 e state foram implementados. Loopback permanece documentado para clientes Desktop; o fluxo de dispositivos limita escopos Drive a appdata/file, que não substituem o acesso existente ao Drive completo.
 
-1. Acesse [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto.
-2. Habilite a **Google Drive API** em APIs e serviços.
-3. Configure a tela de consentimento OAuth (Google Auth Platform). Caso use o modo de teste, adicione sua conta aos usuários de teste.
-4. Crie um **ID do cliente OAuth** do tipo **Aplicativo para computador**.
-5. Baixe o arquivo `client_secret...json` e guarde-o em segurança no celular ou computador.
+A transferência manual do retorno entre Android e Switch continua experimental: essas páginas não certificam essa combinação. Não foi alegada conformidade universal nem aceitação pelo Google real; tipo de cliente, escopo, consentimento e políticas da conta ainda podem bloquear autorização. Não houve troca para Device Flow que removesse funcionalidades.
 
-Documentação: [OAuth para aplicativos instalados](https://developers.google.com/identity/protocols/oauth2/native-app).
+## Dados e compatibilidade
 
-### 2. Conectar o Switch pelo celular
+Todos ficam em `sdmc:/switch/switch-manager/`:
 
-1. Conecte Switch e celular à **mesma rede Wi-Fi**.
-2. No Switch File Manager, escolha o painel e abra a opção **Google Drive**.
-3. O Switch mostrará um endereço local, por exemplo `http://192.168.1.20:8080`. Use o **endereço exato** exibido na tela.
-4. Abra esse endereço no navegador do celular.
-5. Na primeira conexão, selecione o `client_secret...json` e toque em **Salvar credencial**.
-6. Toque em **Entrar com o Google**, escolha sua conta e autorize o acesso solicitado.
-7. A implementação atual pode redirecionar para `http://localhost` e mostrar uma página que não abre. Copie o **endereço completo** da barra do navegador, volte à página local do Switch, cole no campo do Passo 2 e toque em **Enviar para o Switch**.
-8. O login só é confirmado após gravar e reler o token. Se houver erro **SD**, use **Tentar salvar login novamente**; aguarde o fechamento da tela no Switch somente depois da confirmação.
+- `google.json`: credencial compartilhada do aplicativo; preservada.
+- `token.txt` e `login.disabled`: legados, lidos se ainda não existe estado novo; não são alterados implicitamente.
+- `drive-account.json`: autorização atual, vínculo com client ID, identificação opcional, preferência e estado de conexão. Tem precedência sobre o legado.
+- `.sfm-old-NNN`, `.sfm-new-NNN` e `.tmp.*`: backups/candidatos; também podem conter segredos. Não compartilhar ou incluir em artefatos.
 
-**Segurança:** o endereço de retorno pode conter um código de autorização. Nunca o compartilhe. A página local usa HTTP; utilize apenas rede Wi-Fi confiável. Não ignore avisos de segurança de um aplicativo desconhecido: confira se o projeto OAuth foi criado por você. O fluxo atual precisa ser revisado e modernizado antes de uma distribuição pública definitiva.
+O estado novo é gravado transacionalmente em um único arquivo para evitar mistura entre preferência, conta e token. Esquecimento mantém marcador sem token para impedir retorno ao legado. Detalhes de recuperação, limpeza seletiva e limites em [GOOGLE_DRIVE_PERSISTENCIA.md](GOOGLE_DRIVE_PERSISTENCIA.md).
 
-### 3. Local dos arquivos de configuração
+## Recursos e restrições preservados
 
-O caminho legado continua sendo:
+Listagem/paginação, download/upload de arquivos e árvores SD↔Drive, criação de pastas, renomeação e lixeira permanecem implementados. Mover SD↔Drive, copiar Drive→Drive, exportar Docs/Planilhas e ZIP remoto continuam indisponíveis. Upload resumível e arquivos muito grandes exigem validação adicional.
 
-- `sdmc:/switch/switch-manager/google.json` — credencial OAuth.
-- `sdmc:/switch/switch-manager/token.txt` — token de renovação.
-- `login.disabled` no mesmo diretório — bloqueio persistente após desconexão, sem apagar token.
-- Sufixos `.sfm-old-NNN` e `.sfm-new-NNN` — cópias de recuperação/temporários, que também podem conter segredos.
+## Diagnóstico
 
-A pasta `switch-manager` é o caminho ainda utilizado pelo código, apesar do nome atual **Switch File Manager**. Não compartilhe esses arquivos nem os envie ao GitHub.
+- **SD: etapa/errno:** persistência local, sem atribuir rejeição ao Google. Use retry quando oferecido.
+- **Google: HTTP/código OAuth:** resposta do endpoint; inclusive invalid_grant preserva dados e informa autorização inválida.
+- **Rede:** DNS, transporte ou SSL. A inicialização registra Result em categoria REDE; Result e errno são códigos distintos.
+- **Retorno não corresponde:** a URL deve conter o state da autorização atual. Reabra a página e autorize novamente se iniciar uma nova sessão.
+- **Versão inesperada:** consulte [NACP e instalação](VERSAO_E_INSTALACAO.md).
 
-### 4. Limitações atuais
-
-- A correção candidata da 0.10.9 ainda exige teste no Switch Lite/FAT32/exFAT. O fluxo continua experimental.
-- Navegação e transferências têm testes com API simulada, sem aprovação integral em conta Google/SSL reais.
-- **Mover** entre Drive e SD está bloqueado por segurança: use **Copiar**, confira os arquivos e só depois exclua a origem manualmente.
-- Copiar diretamente de uma pasta do Drive para outra não é suportado.
-- Arquivos nativos Google Docs e Planilhas não são exportados nesta versão.
-- ZIP diretamente no Drive não é suportado.
-
-### 5. Solução de problemas
-
-- **Página não abre no celular:** confira a mesma rede Wi-Fi, o IP mostrado no Switch e a porta `8080`.
-- **SD: etapa=...; errno=...:** falha local identificada. Use a repetição de salvamento oferecida; o detalhe permite localizar a chamada sem revelar o token. A causa do relato antigo no hardware ainda precisa ser confirmada.
-- **Google: HTTP ...:** resposta efetiva do endpoint OAuth; dados locais são preservados inclusive em invalid_grant.
-- **Rede:** falha de transporte/DNS/TLS, sem presumir rejeição do Google.
-- **Google recusa explicitamente o login:** confira a Drive API, o tipo de credencial **Aplicativo para computador**, a tela de consentimento e os usuários de teste.
-- **Código inválido:** inicie uma nova autorização; códigos não podem ser reutilizados.
-- **Drive não carrega:** confira conexão com a internet, data e hora e mensagens de erro exibidas no Switch.
+Logs em `sdmc:/switch/Switch File Manager/logs/sfm.log`. Nunca enviar tokens, JSON de credencial, códigos ou backups como diagnóstico.

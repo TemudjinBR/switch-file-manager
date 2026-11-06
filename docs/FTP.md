@@ -37,3 +37,13 @@ O diálogo ativo atualiza endereço, clientes, arquivos concluídos, total de da
 Uploads usam `.sfm-part` com criação exclusiva, flush/fsync e finalização com `.sfm-backup` quando necessário. Temporários existentes não são apagados automaticamente. Uma falha ainda pode exigir conferência manual dos arquivos de teste; não é uma transação completa nem garantia contra perda de energia.
 
 Os testes atuais usam o servidor de produção com sockets POSIX de loopback e um stub limitado ao ciclo de vida de rede libnx. Eles cobrem modos ativo/passivo, upload/download, REST de download, arquivos/pastas, renomeação/exclusão e rejeição de alvos/caminhos inválidos. Não simulam SSL, firmware, cartão SD ou desempenho do console.
+
+## Falha de inicialização relatada no Lite — Missão 3.1
+
+Relato: **FTP indisponível — Falha ao inicializar a rede.** O código anterior chamava `socketInitializeDefault()` tanto no FTP quanto no Drive, com flags de posse independentes. O [libnx 4.12.0](https://github.com/switchbrew/libnx/blob/7644c9b26099aa2d2145bc72a21ee24190e92085/nx/source/runtime/devices/socket.c) recusa a segunda inicialização de `soc:` com `LibnxError_AlreadyInitialized`; `socketExit()` remove esse dispositivo. O conflito de ciclo de vida foi reproduzido na fronteira simulada do SDK. Não há Result do console para afirmar que esse foi o único motivo do relato.
+
+Na 0.10.10, [socket_runtime.cpp](../src/network/socket_runtime.cpp) coordena uma posse idempotente por serviço. O primeiro consumidor inicializa; o último encerra. Parar FTP não encerra sockets do Drive; encerrar Drive não encerra FTP. Falha deixa o consumidor livre para tentar novamente. A inicialização SSL desfaz somente sua própria posse em falha, preservando o FTP.
+
+Falhas de `socketInitializeDefault` registram `Result=0xXXXXXXXX`, módulo/descrição, tipo de applet e memória total/usada quando o SDK permite consultá-las. Logs em `sdmc:/switch/Switch File Manager/logs/sfm.log`, categoria REDE. Result não é errno e não é substituído por código inventado. O transporte de arquivos mantém porta 2121, buffers existentes e aviso anônimo; não há promessa de resolver falta real de memória apenas por unificar os serviços.
+
+Os testes de ciclo de vida exercitam o servidor FTP real em loopback, upload/download, parada/reinício, falha recuperável e Drive → FTP/FTP → Drive. A fronteira libnx simula serviço já inicializado e Result de falha; não simula applet, Wi-Fi, SSL ou memória do console. Validar no Lite em modo applet e memória completa, antes e depois de usar Drive.

@@ -11,6 +11,8 @@ flowchart TD
     App[Aplicação e dois painéis] --> UI[Renderização libnx]
     App --> Storage[Operações locais e progresso]
     App --> FTP[Servidor FTP]
+    FTP --> Sockets[Sockets compartilhados]
+    Cloud --> Sockets
     App --> Cloud[Google Drive e OAuth]
     App --> ZIP[Operações ZIP]
     Storage --> Core[Caminhos comuns]
@@ -31,9 +33,9 @@ flowchart TD
 
 - `core`: sem serviços do Switch; constantes de caminhos e manipulação básica de caminhos SD.
 - `storage`: POSIX, leitura de diretórios, cópia com destino exclusivo, comparação byte a byte e remoção. Retorna erros ao chamador. O chamador valida origem/destino e pede confirmação na UI.
-- `security`: saneamento FAT/exFAT, aviso para pastas críticas e rejeição de caminhos ZIP absolutos ou com `..`.
+- `security`: saneamento FAT/exFAT, aviso para pastas críticas, rejeição de traversal ZIP e geração de nonces/desafio PKCE. Produção usa CSRNG/SHA-256 libnx; testes usam getrandom e hash portátil conferido com referência independente.
 - `ui`: recursos gráficos, desenho e texto; falhas de fonte/framebuffer/memória são registradas. A aplicação recebe o estado da inicialização.
-- `network`: até quatro clientes FTP, porta 2121, sockets de controle/dados e contadores atômicos. A atualização dos painéis usa `fileChanges()`.
+- `network`: socket_runtime coordena uma posse por FTP/Drive e o último encerra libnx; falhas registram Result/contexto e permitem retry. O FTP mantém até quatro clientes, porta 2121, sockets de controle/dados e contadores atômicos. A atualização dos painéis usa `fileChanges()`.
 - `cloud`: mantém HTTP/TLS, JSON e OAuth em `gdrive.cpp`; `credential_store.cpp` separa persistência e recuperação. Produção usa SSL nativo; `HOST_TEST` redireciona a API para loopback, sem TLS.
 - `archives`: miniz, inspeção, compressão, extração, CRC, cancelamento e tratamento de erro ao finalizar saída.
 - `diagnostics`: mutex único de gravação, timestamp, linhas limitadas a 4096 bytes, retorno booleano e `lastErrorCode()`. Rotaciona antes de abrir quando o arquivo atinge 1 MiB; uma linha pode ultrapassar levemente o limiar. Mantém um backup. Falha de log não derruba o aplicativo; o erro aparece também em stderr quando muda.
@@ -64,3 +66,11 @@ A Missão 2 preserva todos os módulos C++, headers, versão e imagem incorporad
 A validação de documentação usa `scripts/check_docs.py` (biblioteca padrão) para links Markdown/HTML, âncoras e referências a imagens. A renderização visual de revisão usa navegador e CSS de Markdown compatível com GitHub em arquivos temporários do ambiente; não entra no NRO e não depende de serviço pago. As prévias não são capturas do Switch.
 
 Na Missão 3, a reprodução passou a impor a semântica de rename sem sobrescrita do libnx. A incompatibilidade do código anterior foi demonstrada; o sucesso no SD físico continua pendente. Consultar [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md).
+
+## Gerenciamento de contas na 0.10.10
+
+A UI continua Commander com os mesmos modais/controles/toque. O menu de conta se comunica com gdrive sem expor tokens. Transferências remotas são síncronas, então uma troca só começa entre operações; durante autorização novas chamadas remotas são recusadas.
+
+O registro drive-account.json reúne autorização e preferência para um commit único. A importação dos arquivos legados preserva originais; a precedência do novo estado impede retorno indevido à conta antiga. Cancelamento conserva uma sessão anterior em memória e sucesso limpa os painéis remotos. Esquecimento primeiro persiste bloqueio sem token e depois remove só cópias atribuíveis, com impressões para retomar exclusão parcial. Não existe revogação remota ou lista de contas simultâneas.
+
+A geração NACP usa comparação de conteúdo para evitar metadados obsoletos com timestamps preservados, e a distribuição identifica caminho/versão/hash. Inspeção de duplicados é somente leitura. Ver [versão e instalação](VERSAO_E_INSTALACAO.md).

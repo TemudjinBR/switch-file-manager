@@ -26,8 +26,8 @@ A ordenação aceita nome, tamanho, data e tipo/extensão, com inversão e desem
 | --- | --- |
 | Favoritos | Pastas locais em `sdmc:/switch/switch-manager/favoritos.txt`; adicionar, visitar e remover. Drive não pode ser favorito aqui. |
 | Histórico | Até 15 diretórios locais recentes em `historico.txt`, sem a raiz; remove repetições e permite limpar com confirmação. |
-| Credencial e token Drive | `google.json` e `token.txt` no mesmo diretório legado, preservados pela nova camada recuperável da 0.10.9, cuja validação física ainda está pendente. |
-| Desconexão da conta | `login.disabled`: `1` bloqueia uso automático do token; `0` libera após nova autorização gravada/conferida. Não exclui token ou credencial. |
+| Credencial e token Drive | `google.json` e `token.txt` legados preservados. `drive-account.json` guarda autorização/estado atual e preferência; validação física ainda pendente. |
+| Desconexão da conta | `enabled=false` em `drive-account.json` bloqueia restauração automática. O marcador `login.disabled` antigo é lido somente na importação não destrutiva. |
 | Cópias de recuperação OAuth | `token.txt.sfm-old-NNN` e `google.json.sfm-old-NNN`; temporários `.sfm-new-NNN` não são aceitos como login. Nunca incluir esses arquivos em logs/artefatos. |
 | Ordenação e inversão | Por painel, durante a sessão; não são salvas em arquivo. |
 | Filtro e marcações | Durante a sessão, com limpeza nas transições/reloads descritos; não são salvos. |
@@ -55,8 +55,8 @@ Drive não tem total de pasta calculado nesse diálogo. A listagem remota atual 
 
 O cartão FAT32 limita cada arquivo a menos de 4 GiB. ZIP64, exFAT, arquivos grandes, perda de energia e alterações concorrentes exigem testes próprios no hardware. Não há indicadores de relógio ou bateria implementados nesta interface.
 
-## Persistência Drive na 0.10.9
+## Persistência Drive na 0.10.10
 
 A camada específica de credenciais não usa substituição POSIX de arquivo por `rename` sobre destino existente. Ela verifica diretórios, grava um temporário exclusivo sem buffer stdio, trata escritas parciais/EINTR, chama fsync, fecha e relê. O anterior vai para backup livre antes da instalação do novo; falha posterior provoca tentativa de rollback, sem apagar as cópias de dados. Se o canônico estiver ausente depois de interrupção, a leitura recupera o backup anterior mais recente reconhecido.
 
-O login só é confirmado após verificar novamente o token final. Dados de autenticação não são apagados em `invalid_grant`, erros de rede ou falhas do SD. O limite conservador de nomes reservados é de 128 por arquivo; ao esgotar, o processo falha com diagnóstico, sem limpar dados automaticamente. Detalhes e limites em [Persistência Drive](GOOGLE_DRIVE_PERSISTENCIA.md).
+O login só é confirmado após verificar novamente o token final. Dados de autenticação não são apagados em `invalid_grant`, erros de rede ou falhas do SD. Os slots são descobertos no diretório e numerados em 64 bits, sem o limite artificial de 128. Backups não são expurgados automaticamente e ainda consomem espaço. Esquecer exige confirmação e remove apenas autorizações atribuídas à conta, preservando dados pessoais e a credencial compartilhada do aplicativo. Detalhes e limites em [Persistência Drive](GOOGLE_DRIVE_PERSISTENCIA.md).

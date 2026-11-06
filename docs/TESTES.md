@@ -2,7 +2,7 @@
 
 ## Separar execuções e relatos
 
-Os resultados da Missão 1 foram preservados em [histórico](historico/VALIDACAO_MISSAO_1.md). A [Missão 2](historico/VALIDACAO_MISSAO_2.md) preserva sua validação anterior; o [relatório atual](RELATORIO_VALIDACAO.md) identifica a execução da Missão 3, sobre persistência OAuth. O relato do proprietário sobre “Falha ao salvar login no cartão SD.” no Lite é registrado como falha física conhecida, sem supor que a equipe executou ou aprovou a matriz no console.
+Os resultados da Missão 1 foram preservados em [histórico](historico/VALIDACAO_MISSAO_1.md). A [Missão 2](historico/VALIDACAO_MISSAO_2.md) preserva sua validação anterior; o [relatório atual](RELATORIO_VALIDACAO.md) identifica a execução da Missão 3.1, sobre FTP, versão e contas OAuth. A [Missão 3](historico/VALIDACAO_MISSAO_3.md) também foi preservada em histórico. O relato do proprietário sobre “Falha ao salvar login no cartão SD.” no Lite é registrado como falha física conhecida, sem supor que a equipe executou ou aprovou a matriz no console.
 
 ## Execução reproduzível
 
@@ -20,7 +20,7 @@ python3 scripts/validate_nro.py SwitchFileManager.nro
 python3 tests/run.py --nro SwitchFileManager.nro
 python3 scripts/package.py
 (cd dist && sha256sum --check SwitchFileManager.nro.sha256)
-(cd dist && sha256sum --check SwitchFileManager-v0.10.9.zip.sha256)
+(cd dist && sha256sum --check SwitchFileManager-v0.10.10.zip.sha256)
 ```
 
 `bash scripts/build.sh` reúne testes, build, validação e pacote. No ambiente desta auditoria utiliza `/workspace/sfm-environment/build.sh`, que compila uma cópia descartável com a imagem devkitPro configurada. O build nativo também funciona com as variáveis DEVKITPRO/DEVKITA64 do README.
@@ -115,3 +115,24 @@ A configuração aceita os elementos HTML do cabeçalho, permite a primeira linh
 `tests/test_network.py` exercita o servidor de login e o endpoint de tokens local, incluindo falhas de armazenamento após HTTP 200. Confere `isLoggedIn()`, arquivos, marcador de desconexão e mensagens; respostas simuladas não provam aprovação pelo Google real. Diagnósticos são examinados para ausência dos valores fictícios usados como segredos.
 
 Na matriz física do Drive, registrar também: primeira autorização, substituição de token já existente, encerramento/reabertura, renovação, nova tentativa local e desconexão persistente. Usar cartão/conta de teste; não provocar falhas destrutivas no SD do proprietário. Conferir `DRIVE_SD` com etapa/errno em `sdmc:/switch/Switch File Manager/logs/`. Detalhes em [persistência](GOOGLE_DRIVE_PERSISTENCIA.md).
+
+## Regressão de rede, versão e contas — Missão 3.1
+
+| Área | Teste e limite |
+| --- | --- |
+| Ciclo de sockets | test_network_lifecycle compila FTP/Drive/runtime reais; o stub reproduz inicialização duplicada e Result de falha. Transferências reais de loopback antes/depois de parar o outro consumidor; retry, parada/reinício e idempotência. Não simula SSL, applet ou memória do Switch. |
+| Contas | test_network usa HTTP fictício e E/S temporária: restauração, keep on/off, reconexão, troca, cancelamento, suspensão de acesso, vínculo client ID, identidade e ausência de mistura de tokens. |
+| Exclusão explícita | Marcador antes de apagar, falhas SD/EROFS, retomada após cópias já removidas, temporários desconhecidos preservados, favoritos/histórico e outras contas intactos; nenhuma revogação remota alegada. |
+| OAuth | PKCE S256 contra vetor RFC 7636/hashlib, padding SHA-256, nonces, csrf e state incompatível sem consumir código; sem senhas/credenciais reais. |
+| Versão | Makefile real com fronteira nacptool fictícia testa override antigo, timestamp enganoso, repetição e versão inválida. Com --nro, extrai DisplayVersion diretamente do asset compilado e compara VERSION. |
+| Instalação/artefatos | Detecta cópia antiga em fixture sem modificá-la; verifica manifesto/caminho, checksums, lista permitida e ausência de segredos fictícios no pacote. |
+
+A compilação final usa nacptool real. Os testes de protocolo e armazenamento complementam, sem substituir, o NRO nativo e a matriz física.
+
+### Procedimento mínimo no Lite para esta candidata
+
+1. Conferir 0.10.10 no Homebrew Menu e no menu Ações, para o caminho indicado no pacote. Registrar firmware/Atmosphère, modo applet ou memória completa, formato SD e hash do NRO.
+2. Com dados de teste, iniciar FTP, conectar na porta 2121, enviar/baixar e comparar arquivo, parar e reiniciar. Repetir após usar Drive; testar também FTP ativo antes de entrar no Drive. Repetir em applet/memória completa se disponíveis, registrando Result real se falhar.
+3. Autorizar conta de teste pelo Android, confirmar persistência e reabrir aplicativo com keep ativado/desativado. Reconectar, renovar, desconectar, trocar para outra conta e cancelar uma troca; conferir ausência de listagens antigas. Testar Esquecer somente em conta de teste, verificando aviso local/ausência de revogação alegada e preservação dos arquivos pessoais.
+
+Não provocar corte de energia, SD cheio/corrupção ou exclusão em dados do proprietário. Os cenários de falha já usam diretórios temporários e hooks no host. FAT32/exFAT real, UI/toque/controles e autorização Google real continuam não executados nesta missão.

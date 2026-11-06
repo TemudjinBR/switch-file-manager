@@ -2,7 +2,7 @@
 
 ## Falha relatada no Nintendo Switch Lite — Google Drive
 
-Na v0.10.8, o proprietário relatou **“Falha ao salvar login no cartão SD.”** durante a autenticação. O ponto de código corresponde à persistência local do token. A causa exata e a chamada que falha no console não foram confirmadas; não atribuir a rejeição ao Google. Os testes de host aprovados não anulam esse relato. A v0.10.9 implementa uma correção experimental com diagnóstico por etapa/errno e recuperação. Foi reproduzida a falha ao substituir destino existente com a semântica de rename do libnx, mas ainda não foi comprovada a chamada exata que falhou naquele console; ver [Google Drive](GOOGLE_DRIVE.md#falha-de-persistência-relatada-no-switch-lite).
+Na v0.10.8, o proprietário relatou **“Falha ao salvar login no cartão SD.”** durante a autenticação. O ponto de código corresponde à persistência local do token. A causa exata e a chamada que falha no console não foram confirmadas; não atribuir a rejeição ao Google. Os testes de host aprovados não anulam esse relato. A v0.10.10 preserva e amplia a correção experimental de persistência introduzida na 0.10.9, com diagnóstico por etapa/errno e recuperação. Foi reproduzida a falha ao substituir destino existente com a semântica de rename do libnx, mas ainda não foi comprovada a chamada exata que falhou naquele console; ver [Google Drive](GOOGLE_DRIVE.md#falha-de-persistência-relatada-no-switch-lite).
 
 ## Dependem do Switch físico
 
@@ -16,7 +16,7 @@ Na v0.10.8, o proprietário relatou **“Falha ao salvar login no cartão SD.”
 ## Restrições implementadas
 
 - Mover SD ↔ Drive está bloqueado. Cópia Drive → Drive, exportação de Docs/Planilhas e ZIP remoto não são suportados.
-- O fluxo OAuth atual é experimental, exige credenciais individuais e cópia manual do código de retorno. O servidor local usa HTTP na porta 8080; não há modernização completa com PKCE nesta etapa.
+- O fluxo OAuth atual é experimental, exige credenciais individuais e cópia manual do código de retorno. O servidor local usa HTTP na porta 8080; PKCE S256/state estão implementados, mas a autorização manual entre Android e Switch continua experimental e depende do cliente/consentimento/política Google.
 - FTP é anônimo e sem TLS, com acesso ao SD inteiro. A confirmação já existente na UI deve ser mantida. Avisos de pastas críticas na UI não constituem bloqueio global de acesso pelo FTP.
 - A retomada de upload FTP é recusada; REST é usado para downloads. Temporários preexistentes não são apagados automaticamente.
 - Upload resumível Drive ainda aceita respostas de progresso sem conferir completamente o offset confirmado pelo Google. O teste local cobre o caminho básico; retomada real continua pendente.
@@ -37,14 +37,22 @@ Na v0.10.8, o proprietário relatou **“Falha ao salvar login no cartão SD.”
 - A fila limita 20 tarefas locais, não tem rollback por tarefa e não aceita Drive. Um item já copiado pode exigir revisão antes de repetir uma tarefa interrompida.
 - Exclusão recursiva consulta o progresso para desenhar/ler B, mas não oferece parada imediata garantida em toda a travessia; não anunciar cancelamento universal de exclusão.
 - O analisador exibe nove maiores itens imediatos. O cálculo de propriedades limita aprofundamento e pode omitir itens inacessíveis; datas remotas não são buscadas.
-- Não há tela Sobre, versão no cabeçalho da UI, bateria/relógio, visualizador universal ou instalador de NSP/XCI/NSZ implementados.
+- Não há tela Sobre ou versão no cabeçalho principal (o menu Ações mostra a versão em execução), bateria/relógio, visualizador universal ou instalador de NSP/XCI/NSZ implementados.
 
-## Limites da persistência OAuth na v0.10.9
+## Limites da persistência OAuth na v0.10.10
 
 - Renomeações são feitas apenas para nomes livres; backup e candidato permanecem no SD. A sequência não é atomicidade contra perda elétrica. Uma interrupção pode exigir recuperar o anterior no próximo carregamento.
-- Cada arquivo tem até 128 slots de transação e 64 KiB de conteúdo. O limite é diagnosticado como `reservar-transacao`/ENOSPC, mesmo havendo espaço físico. Não há expurgo automático de credenciais antigas.
+- Cada arquivo tem até 64 KiB de conteúdo. Slots de 64 bits continuam após 127, sem expurgo automático; backups podem crescer até esgotar o espaço do SD. Esquecer é a única exclusão seletiva autorizada pela UI, sem promessa de apagamento forense.
 - Backups e temporários contêm segredos em texto como os arquivos legados. Não compartilhar, versionar ou incluir em artefatos. O acesso simultâneo do FTP a esses arquivos não é bloqueado pela transação.
 - Um candidato ainda não salvo permanece só na memória; fechar o aplicativo nessa condição perde a autorização recebida. O botão de nova tentativa evita repetir OAuth enquanto a sessão continua aberta.
-- Erro ao persistir a desconexão é informado; o token permanece no SD e poderá ser reutilizado na próxima execução se o marcador não foi salvo.
+- Erro ao persistir a desconexão é informado; a autorização permanece no SD e poderá ser restaurada na próxima execução se o estado enabled=false não foi salvo. Esquecimento parcial mantém marcador sem token e informa falhas/resíduos não atribuíveis.
 
 Ver [contrato e evidências](GOOGLE_DRIVE_PERSISTENCIA.md).
+
+## Relatos de FTP e versão — Missão 3.1
+
+O Lite apresentou “Falha ao inicializar a rede” no FTP. O conflito de inicializações independentes FTP/Drive foi reproduzido e corrigido por posse compartilhada, mas falta o Result do relato físico para excluir falta real de recursos/serviços. Agora o SDK é diagnosticado com Result/módulo/descrição, modo applet e memória disponível para consulta. Não confundir sucesso de sockets POSIX com inicialização aprovada no console.
+
+O Homebrew Menu exibiu 0.10.8 quando se esperava 0.10.9. O NRO anterior validado contém NACP 0.10.9; duplicados, caminho aberto e arquivo antigo permanecem hipóteses. A 0.10.10 reforça build e identificação, mas não declara a causa física descoberta. Ver [versão](VERSAO_E_INSTALACAO.md) e [FTP](FTP.md).
+
+Esquecimento preserva cópias de outras contas identificadas e conteúdo não atribuível; esse último caso é informado como resíduo. A autorização compartilhada do aplicativo em google.json é mantida. Não há revogação remota ou suporte a uma lista de múltiplas contas ativas simultaneamente; o gerenciamento é da conta ativa/salva, com troca transacional.

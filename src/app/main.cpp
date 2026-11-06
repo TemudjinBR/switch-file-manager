@@ -653,22 +653,23 @@ static bool driveLoad(Pane& p) {
     return true;
 }
 
-static bool ensureDriveLogin() {
+static bool ensureDriveLogin(bool newAccount = false) {
     if (!gd::netInit()) {
         message("Sem rede", wrapText(gd::lastError(), 52));
         return false;
     }
-    if (gd::isLoggedIn()) return true;
+    if (!newAccount && gd::isLoggedIn()) return true;
     showBusy("Conectando ao Google Drive...");
-    if (gd::loadSavedLogin()) return true;
+    if (!newAccount && gd::loadSavedLogin()) return true;
 
+    std::string initialError = newAccount ? std::string() : gd::lastError();
     std::string url;
     if (!gd::loginServerStart(url)) {
         message("Erro", wrapText(gd::lastError(), 52));
         return false;
     }
     bool ok = false;
-    std::string lastErr;
+    std::string lastErr = initialError;
     for (;;) {
         if (!appletMainLoop()) { g_quit = true; break; }
         padUpdate(&pad);
@@ -1298,30 +1299,58 @@ static void toggleMark() {
     p.ensureVisible();
 }
 
+static void resetDrivePanels() {
+    for (int i = 0; i < 2; ++i) {
+        if (!panes[i].drive) continue;
+        Pane& p = panes[i];
+        p.drive = false; p.dstack.clear(); p.marks.clear(); p.items.clear(); p.filter.clear();
+        p.path = "sdmc:/"; p.cur = 0; p.scroll = 0; p.reload();
+    }
+}
+static void openFreshDrivePanel() {
+    Pane& p = panes[active];
+    p.drive = true; p.dstack.clear(); p.marks.clear(); p.items.clear(); p.filter.clear();
+    p.setDrivePath(); p.cur = 0; p.scroll = 0; p.reload();
+}
 static void logoutAll() {
     bool saved = gd::logout();
-    for (int i = 0; i < 2; i++) {
-        if (panes[i].drive) {
-            panes[i].drive = false;
-            panes[i].dstack.clear();
-            panes[i].path = "sdmc:/";
-            panes[i].cur = 0;
-            panes[i].scroll = 0;
-            panes[i].reload();
-        }
-    }
+    resetDrivePanels();
     if (!saved) message("Google Drive", "Sessão encerrada, mas a desconexão não foi salva. " + wrapText(gd::lastError(), 48));
 }
 
 static void cloudMenu() {
-    Pane& p = panes[active];
-    std::vector<std::string> o = {
-        p.drive ? "Voltar este painel ao cartão SD" : "Abrir o Google Drive neste painel",
-        "Trocar de conta do Google"};
-    int r = modal("Google Drive", "", o);
-    if (r == 0) toggleDrive();
-    else if (r == 1) {
-        if (modal("Trocar de conta", "Isso desconecta o Google Drive deste Switch.\nVocê entrará de novo na próxima vez.", {"Cancelar", "Desconectar"}, 0) == 1) logoutAll();
+    for (;;) {
+        std::vector<std::string> options = {
+            "Entrar com Google", "Reconectar conta salva",
+            std::string("Manter conectado: ") + (gd::keepConnected() ? "ativado" : "desativado"),
+            panes[active].drive ? "Voltar este painel ao cartão SD" : "Abrir o Google Drive neste painel",
+            "Desconectar conta", "Trocar de conta", "Esquecer esta conta", "Voltar"};
+        std::string state = gd::connectionLabel();
+        if (gd::isLoggedIn() && !gd::accountName().empty()) state += " — " + gd::accountName();
+        int r = modal("Google Drive e conta", wrapText(state, 44), options);
+        if (r < 0 || r == 7) return;
+        if (r == 0) {
+            if (gd::isLoggedIn()) message("Google Drive", "Conta conectada. Use Trocar de conta para autorizar outra.");
+            else if (ensureDriveLogin(true)) { resetDrivePanels(); openFreshDrivePanel(); return; }
+        } else if (r == 1) {
+            showBusy("Reconectando conta salva...");
+            if (gd::netInit() && gd::reconnectSavedLogin()) { resetDrivePanels(); openFreshDrivePanel(); return; }
+            message("Google Drive", wrapText(gd::lastError(), 52));
+        } else if (r == 2) {
+            if (!gd::setKeepConnected(!gd::keepConnected())) message("Google Drive", wrapText(gd::lastError(), 52));
+        } else if (r == 3) { toggleDrive(); return; }
+        else if (r == 4) {
+            if (modal("Desconectar conta", wrapText("Encerra a sessão e impede reconexão automática. Arquivos e autorização local são preservados.", 44), {"Cancelar", "Desconectar"}) == 1) logoutAll();
+        } else if (r == 5) {
+            if (modal("Trocar de conta", wrapText("As operações remotas ficarão pausadas. A conta anterior é mantida se você cancelar ou a nova autorização falhar.", 44), {"Cancelar", "Autorizar outra conta"}) == 1 && ensureDriveLogin(true)) {
+                resetDrivePanels(); openFreshDrivePanel(); return;
+            }
+        } else if (r == 6) {
+            if (modal("Esquecer esta conta", wrapText("Remove a autorização local identificada desta conta, incluindo suas cópias. Não apaga arquivos no Drive nem revoga o acesso no Google. A credencial compartilhada do aplicativo é preservada.", 44), {"Cancelar", "Esquecer esta conta"}) == 1) {
+                bool ok = gd::forgetAccount(); resetDrivePanels();
+                message("Google Drive", ok ? "Conta esquecida neste aplicativo. Nenhuma revogação remota foi realizada." : wrapText(gd::lastError(), 52));
+            }
+        }
     }
 }
 
@@ -1568,7 +1597,7 @@ static void actionsMenu() {
         "Copiar para o outro painel", "Mover para o outro painel", "Renomear",
         "Nova pasta", "Apagar", "Seleção múltipla...",
         "Fila de transferências...", "Ordenar e buscar...", "Compactar e extrair (ZIP)...", "Propriedades e espaço...", "Favoritos e histórico...", "Google Drive e conta...", "Transferência Wi-Fi..."};
-    int r = modal("Ações", "", o);
+    int r = modal("Ações — v" SFM_VERSION, "", o);
     if (r >= 0 && r < (int)o.size()) sfm_diag::write("ACAO", o[r]);
     switch (r) {
         case 0: doCopyMove(false); break;
@@ -1667,9 +1696,8 @@ static void handleInput() {
 // ---------------------------------------------------------------- main
 
 int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
     sfm_diag::write("APP", "Inicio v" SFM_VERSION);
+    if (argc > 0 && argv && argv[0]) sfm_diag::write("APP", std::string("executavel=") + argv[0]);
 
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeDefault(&pad);
@@ -1683,6 +1711,10 @@ int main(int argc, char** argv) {
         refreshSpace();
         panes[0].reload();
         panes[1].reload();
+        if (gd::autoLoginAvailable()) {
+            showBusy("Restaurando conta Google Drive...");
+            if (gd::netInit()) gd::loadSavedLogin();
+        }
         int frame = 0;
         while (!g_quit && appletMainLoop()) {
             padUpdate(&pad);

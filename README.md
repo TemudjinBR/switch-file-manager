@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>0.10.9 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
+  <strong>0.10.10 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
   Homebrew para Nintendo Switch desbloqueado com Atmosphère · C++17 e libnx
 </p>
 
@@ -32,7 +32,7 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 **Estado atual:** o aplicativo e esta revisão continuam experimentais. “Implementado” significa que o recurso existe no código e pode ser acionado; a validação automática, a compilação e os testes físicos são evidências distintas. Consulte a [matriz de testes](docs/TESTES.md) e o [relatório da revisão](docs/RELATORIO_VALIDACAO.md).
 
-> **Google Drive — problema conhecido no Switch Lite:** foi relatada a mensagem **“Falha ao salvar login no cartão SD.”** na v0.10.8. Ela indica uma falha na persistência local do token; a causa exata no console ainda não foi confirmada. Não é evidência de que o Google recusou a autorização. A **0.10.9 experimental** inclui correções de gravação, releitura, recuperação e mensagens, com etapa/errno, mas **ainda não foi validada no hardware**. Veja a [investigação e os limites da correção](docs/GOOGLE_DRIVE_PERSISTENCIA.md).
+> **Google Drive — problema conhecido no Switch Lite:** foi relatada a mensagem **“Falha ao salvar login no cartão SD.”** na v0.10.8. Ela indica uma falha na persistência local do token; a causa exata no console ainda não foi confirmada. Não é evidência de que o Google recusou a autorização. A **0.10.10 experimental** inclui correções de gravação, releitura, recuperação e mensagens, com etapa/errno, mas **ainda não foi validada no hardware**. Veja a [investigação e os limites da correção](docs/GOOGLE_DRIVE_PERSISTENCIA.md).
 
 ## Por que usar
 
@@ -49,7 +49,7 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 ## Funcionalidades
 
-O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.9. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
+O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.10. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
 
 ### 1. Interface e navegação
 
@@ -99,9 +99,10 @@ A fila aceita **até 20 tarefas**, cada uma podendo conter vários itens, soment
 - **Navegar por pastas**, listar arquivos e carregar páginas sucessivas da API.
 - **Baixar arquivos e árvores de pastas para o SD** e **enviar arquivos e pastas do SD**.
 - **Criar pastas**, **renomear itens**, **enviar para a lixeira**, renovar a autorização e desconectar/trocar de conta mediante confirmação.
+- **Gerenciar a conta**: Entrar com Google, Manter conectado, Reconectar conta salva, Desconectar conta, Trocar de conta e Esquecer esta conta. O nome é mostrado quando a API o disponibiliza.
 - Retornar um painel do Drive ao SD sem necessariamente desconectar a conta.
 
-A falha relatada na v0.10.8 motivou o candidato 0.10.9: o login só é confirmado após gravar e reler o token. Erros locais aparecem como **SD**, separados das respostas **Google** e de **Rede**; uma autorização recebida pode ser salva novamente pelo botão **Tentar salvar login novamente**, sem repetir a troca de código. O teste físico permanece pendente. **Mover SD ↔ Drive está bloqueado**, copiar diretamente Drive → Drive não é suportado, documentos nativos Google não são exportados e ZIP remoto não está disponível. A API usa HTTPS nativo no console; o formulário local de configuração usa HTTP na porta 8080 e deve ser aberto somente em rede confiável.
+A correção de persistência da Missão 3 foi preservada e ampliada na 0.10.10: o login só é confirmado após gravar e reler o token. Erros locais aparecem como **SD**, separados das respostas **Google** e de **Rede**; uma autorização recebida pode ser salva novamente pelo botão **Tentar salvar login novamente**, sem repetir a troca de código. O teste físico permanece pendente. **Mover SD ↔ Drive está bloqueado**, copiar diretamente Drive → Drive não é suportado, documentos nativos Google não são exportados e ZIP remoto não está disponível. PKCE S256 e state protegem a autorização atual, ainda experimental; a API usa HTTPS nativo no console; o formulário local de configuração usa HTTP na porta 8080 e deve ser aberto somente em rede confiável.
 
 [Configuração, capacidades, caminhos e limitações do Google Drive](docs/GOOGLE_DRIVE.md).
 
@@ -111,6 +112,8 @@ A falha relatada na v0.10.8 motivou o candidato 0.10.9: o login só é confirmad
 - **Upload e download de arquivos**, listagem de diretórios, navegação, criação e remoção de pastas vazias, exclusão de arquivos, renomeação e consulta de tamanho/data.
 - **Modos passivo e ativo**, listagens LIST/NLST/MLSD/MLST e **retomada de download com REST**. A retomada de upload é recusada.
 - **Estado do servidor:** clientes conectados, arquivos concluídos, total transferido e última atividade. O cabeçalho também informa clientes, listagens e arquivos; o limite de código é de quatro clientes.
+
+O ciclo de sockets é compartilhado com o Drive, sem segunda inicialização nem encerramento indevido. Falhas registram `Result` para diagnóstico; a correção candidata do relato no Lite exige validação física.
 
 **O acesso é anônimo, sem senha e sem TLS, ao SD inteiro.** Use somente rede local confiável; não exponha o servidor em rede pública. A implementação usa temporários e verificações, mas não há comprovação de estabilidade prolongada com arquivos muito grandes no Switch. [Uso, protocolo e limites do FTP](docs/FTP.md).
 
@@ -165,13 +168,17 @@ A galeria está preparada para receber imagens reais conforme o [guia de captura
 
 ## Como instalar
 
-1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.9 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
+1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.10 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
 2. **Baixe `SwitchFileManager.nro`** e o checksum correspondente. A Release v0.10.7 oferece o NRO avulso; não pressupõe o ZIP de distribuição criado no desenvolvimento atual.
 3. **Confira o SHA-256** com uma ferramenta de confiança e coloque o NRO em `sdmc:/switch/Switch File Manager/` no microSD. Se estiver usando o ZIP de teste, extraia sua pasta `switch` na raiz do cartão.
 4. **Abra pelo Homebrew Menu** em um console desbloqueado com Atmosphère. Preserve as configurações já existentes em `switch/switch-manager`.
 5. **Confira a versão do arquivo baixado** pela tag da Release, execução de Actions e metadados NACP apresentados pelo launcher quando disponíveis. O log de início também registra a versão. **Não há tela “Sobre” ou versão desenhada no cabeçalho do aplicativo atual.**
 
 Para comparar hashes no terminal: `sha256sum SwitchFileManager.nro`. A verificação ajuda a conferir o download, mas não substitui os testes no console.
+
+### Conferir o executável instalado
+
+O pacote experimental identifica **switch/Switch File Manager/SwitchFileManager.nro**, sua versão NACP e SHA-256 em `LEIA-ME.txt`/manifesto. O menu **Ações** mostra a versão que está realmente em execução; o log `APP` registra o caminho do NRO. Uma cópia antiga em outro diretório pode continuar aparecendo no Homebrew Menu. Nenhuma cópia ou dado pessoal é apagado automaticamente. A [investigação da versão](docs/VERSAO_E_INSTALACAO.md) distingue metadados comprovados de hipóteses no console.
 
 ## Controles
 
@@ -218,7 +225,7 @@ O uso do FTP local não exige serviço pago. Drive requer conta e projeto OAuth 
 | `third_party/` | Bibliotecas incorporadas com seus créditos e licenças. |
 | `.github/workflows/` | CI e publicação manual com critérios separados. |
 
-A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.9** e é a fonte para NACP, pacote e log inicial. A Missão 3 altera somente a persistência/autenticação Drive, seus diagnósticos e testes; o logotipo e as demais funcionalidades permanecem preservados.
+A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.10** e é a fonte para NACP, pacote e log inicial. A Missão 3 altera somente a persistência/autenticação Drive, seus diagnósticos e testes; o logotipo e as demais funcionalidades permanecem preservados.
 
 ```bash
 python3 tests/run.py
@@ -229,7 +236,7 @@ O script compila com devkitPro disponível ou com o ambiente em nuvem já prepar
 
 ## Limitações e próximos passos
 
-A causa exata do relato no Switch Lite ainda exige confirmação física. A correção de software da 0.10.9 elimina a substituição incompatível com fsdev, preserva arquivos em falhas e fornece diagnósticos de etapa/errno; isso não comprova o login no console. Interface, controles, SD FAT32/exFAT, SSL/OAuth reais, estabilidade FTP prolongada, arquivos grandes, fila, abertura de NROs e suspensão precisam de validação física específica. Os testes automatizados desta revisão são registrados separadamente no [relatório](docs/RELATORIO_VALIDACAO.md).
+A causa exata do relato no Switch Lite ainda exige confirmação física. A correção de software da 0.10.10 elimina a substituição incompatível com fsdev, preserva arquivos em falhas e fornece diagnósticos de etapa/errno; isso não comprova o login no console. Interface, controles, SD FAT32/exFAT, SSL/OAuth reais, estabilidade FTP prolongada, arquivos grandes, fila, abertura de NROs e suspensão precisam de validação física específica. Os testes automatizados desta revisão são registrados separadamente no [relatório](docs/RELATORIO_VALIDACAO.md).
 
 **Planejado, não disponível:** USB OTG e armazenamento externo, atualização automática, instalação de pacotes de jogos, novos provedores de nuvem e exportação de documentos Google. Não há prazo prometido. Consulte o [roadmap](docs/ROADMAP.md) e os [problemas conhecidos](docs/PROBLEMAS_CONHECIDOS.md).
 

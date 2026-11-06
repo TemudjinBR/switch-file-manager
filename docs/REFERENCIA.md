@@ -21,6 +21,8 @@ Documento de entrada para uma pessoa ou IA continuar o projeto. O [índice de do
 | `src/core/paths.cpp`, `include/core/paths.h` | Caminhos comuns e constantes de compatibilidade |
 | `src/storage/filesystem.cpp` | Consulta de arquivos, listagem com erros, tamanho e nomes disponíveis |
 | `src/storage/operations.cpp` | Cópia exclusiva, comparação integral, remoção e notificações de progresso independentes da UI |
+| `src/network/socket_runtime.cpp` | Posse compartilhada de sockets por FTP/Drive, Result e retry |
+| `src/security/oauth.cpp` | CSRNG/PKCE S256 em produção e fronteira de teste |
 | `src/network/wifi_transfer.cpp` | FTP, sessões, sockets de dados, contadores e eventos |
 | `src/cloud/credential_store.cpp`, `include/cloud/credential_store.h` | Persistência OAuth, diagnóstico de E/S, backup e recuperação; sem exclusão automática |
 | `src/cloud/gdrive.cpp` | HTTPS libnx, parser JSON, OAuth, API Drive e servidor local de login |
@@ -42,8 +44,9 @@ Documento de entrada para uma pessoa ou IA continuar o projeto. O [índice de do
 | Caminho no Switch | Conteúdo |
 | --- | --- |
 | `sdmc:/switch/switch-manager/google.json` | Credencial OAuth individual |
-| `sdmc:/switch/switch-manager/token.txt` | Token de renovação |
-| Mesmo diretório, `login.disabled` | Desconexão persistente sem apagar token: 1 desativado, 0 habilitado |
+| `sdmc:/switch/switch-manager/token.txt` | Token de renovação legado, preservado |
+| Mesmo diretório, `drive-account.json` | Conta/refresh, preferência/estado e marcador sem token após esquecer |
+| Mesmo diretório, `login.disabled` | Estado legado lido na importação não destrutiva |
 | Mesmo diretório, `*.sfm-old-NNN` e `*.sfm-new-NNN` | Backups e candidatos com segredos; preservar e não publicar |
 | `sdmc:/switch/switch-manager/favoritos.txt` | Favoritos |
 | `sdmc:/switch/switch-manager/historico.txt` | Histórico de navegação |
@@ -92,8 +95,16 @@ Resultados reproduzíveis: `docs/RELATORIO_VALIDACAO.md`, logs de Actions e arte
 
 ## Continuidade após a Missão 3
 
-A versão experimental atual é **0.10.9**, no mesmo PR #1 e branch `codex/reorganizacao-estabilizacao`. Os trabalhos e relatórios das Missões 1/2 continuam preservados. Não houve alteração do logotipo, organização de pastas, FTP, ZIP ou dados pessoais.
+A Missão 3 entregou a versão experimental **0.10.9**, no mesmo PR #1 e branch `codex/reorganizacao-estabilizacao`. Os trabalhos e relatórios das Missões 1/2 continuam preservados. Não houve alteração do logotipo, organização de pastas, FTP, ZIP ou dados pessoais.
 
 O fluxo Drive só confirma login após gravar e reler o token. Erros de armazenamento têm origem SD, etapa e errno; falhas Google/rede não apagam credenciais. A troca de arquivo evita sobrescrita por rename, pois libnx difere do POSIX do host. Nova tentativa de salvar usa o candidato já recebido, enquanto ele estiver na memória. Consultar [GOOGLE_DRIVE_PERSISTENCIA.md](GOOGLE_DRIVE_PERSISTENCIA.md) antes de alterar o algoritmo.
 
 A reprodução com EEXIST comprova uma incompatibilidade do código anterior; não identifica por si só a chamada que falhou no Lite do proprietário. A correção permanece candidata até validação física FAT32/exFAT, renovação e reinício. Resultados atuais em [RELATORIO_VALIDACAO.md](RELATORIO_VALIDACAO.md); os [resultados da Missão 2](historico/VALIDACAO_MISSAO_2.md) são históricos.
+
+## Continuidade após a Missão 3.1
+
+Atual: **0.10.10 experimental**, mesma branch/PR #1. Antes de alterar autenticação, ler o [contrato de contas/persistência](GOOGLE_DRIVE_PERSISTENCIA.md). O arquivo drive-account.json é a autoridade quando existe; nunca retornar silenciosamente ao token legado se o estado novo for inválido/forgotten. Desconectar preserva autorização; Esquecer é explícito, seletivo e local. PKCE/state não tornam a combinação Android↔Switch automaticamente homologada pelo Google.
+
+FTP/Drive usam exclusivamente socket_runtime; não inserir socketInitialize/socketExit nos consumidores. O último dono encerra, e falhas permitem retry. VERSION prevalece sobre argumentos antigos do make; NACP é conferido por conteúdo. O menu Ações e log de caminho ajudam a diferenciar cópias antigas no Homebrew Menu.
+
+O [histórico da Missão 3](historico/VALIDACAO_MISSAO_3.md) preserva sua execução anterior; [relatório atual](RELATORIO_VALIDACAO.md) e logs/artefatos do Actions são a evidência desta revisão. Nada comprova aprovação física de FTP, contas ou versão no Lite até executar a matriz. Não fazer merge ou Release nesta missão.
