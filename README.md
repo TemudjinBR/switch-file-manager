@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>0.10.11 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
+  <strong>0.10.12 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
   Homebrew para Nintendo Switch desbloqueado com Atmosphère · C++17 e libnx
 </p>
 
@@ -32,7 +32,7 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 **Estado atual:** o aplicativo e esta revisão continuam experimentais. “Implementado” significa que o recurso existe no código e pode ser acionado; a validação automática, a compilação e os testes físicos são evidências distintas. Consulte a [matriz de testes](docs/TESTES.md) e o [relatório da revisão](docs/RELATORIO_VALIDACAO.md).
 
-> **Resultados fisicos da 0.10.10, relatados pelo proprietario:** acesso ao Drive, Manter conectado e desconectar/reconectar funcionaram. FTP, FTP apos Drive, identificacao da versao e recuperacao de download com queda de internet falharam. A Missao 3.1 nao esta aprovada para producao. A **0.10.11 experimental** acrescenta diagnosticos na tela, downloads recuperaveis e identidade do build; ainda exige nova validacao fisica. O relato historico **“Falha ao salvar login no cartão SD.”** permanece registrado em [Google Drive](docs/GOOGLE_DRIVE.md).
+> **Resultados fisicos da 0.10.10, relatados pelo proprietario:** acesso ao Drive, Manter conectado e desconectar/reconectar funcionaram. O novo anexo tambem aprova FTP isolado, antes e apos Drive. FTP + Drive simultaneos, identificacao da versao e recuperacao de download com queda de internet falharam. A Missao 3.1 nao esta aprovada para producao. A **0.10.12 experimental** acrescenta diagnosticos na tela, downloads recuperaveis e identidade do build; ainda exige nova validacao fisica. O relato historico **“Falha ao salvar login no cartão SD.”** permanece registrado em [Google Drive](docs/GOOGLE_DRIVE.md).
 
 ## Por que usar
 
@@ -49,7 +49,7 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 ## Funcionalidades
 
-O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.11. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
+O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.12. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
 
 ### 1. Interface e navegação
 
@@ -102,9 +102,9 @@ A fila aceita **até 20 tarefas**, cada uma podendo conter vários itens, soment
 - **Gerenciar a conta**: Entrar com Google, Manter conectado, Reconectar conta salva, Desconectar conta, Trocar de conta e Esquecer esta conta. O nome é mostrado quando a API o disponibiliza.
 - Retornar um painel do Drive ao SD sem necessariamente desconectar a conta.
 
-A correção de persistência da Missão 3 foi preservada e ampliada na 0.10.11: o login só é confirmado após gravar e reler o token. Erros locais aparecem como **SD**, separados das respostas **Google** e de **Rede**; uma autorização recebida pode ser salva novamente pelo botão **Tentar salvar login novamente**, sem repetir a troca de código. O acesso e a persistencia funcionaram no teste fisico relatado da 0.10.10; os novos downloads e diagnosticos ainda exigem teste no Lite. **Mover SD ↔ Drive está bloqueado**, copiar diretamente Drive → Drive não é suportado, documentos nativos Google não são exportados e ZIP remoto não está disponível. PKCE S256 e state protegem a autorização atual, ainda experimental; a API usa HTTPS nativo no console; o formulário local de configuração usa HTTP na porta 8080 e deve ser aberto somente em rede confiável.
+A correção de persistência da Missão 3 continua preservada na 0.10.12: o login só é confirmado após gravar e reler o token. Erros locais aparecem como **SD**, separados das respostas **Google** e de **Rede**; uma autorização recebida pode ser salva novamente pelo botão **Tentar salvar login novamente**, sem repetir a troca de código. O acesso e a persistencia funcionaram no teste fisico relatado da 0.10.10; os novos downloads e diagnosticos ainda exigem teste no Lite. **Mover SD ↔ Drive está bloqueado**, copiar diretamente Drive → Drive não é suportado, documentos nativos Google não são exportados e ZIP remoto não está disponível. PKCE S256 e state protegem a autorização atual, ainda experimental; a API usa HTTPS nativo no console; o formulário local de configuração usa HTTP na porta 8080 e deve ser aberto somente em rede confiável.
 
-**Downloads recuperaveis:** checkpoint local com CRC, versao remota conferida, Range/If-Range, espera progressiva limitada, pausa/continuacao/cancelamento por X/B ou toque e recuperacao em **Acoes → Downloads do Drive** apos reiniciar. O destino final so aparece completo. Parciais ficam em area tecnica separada; cancelar preserva o parcial e exige escolha explicita para continuar. [Contrato e limites](docs/DOWNLOADS_DRIVE.md).
+**Downloads recuperaveis:** espaco livre verificado antes de requisitar dados, reinicio do zero mediante escolha na UI quando a retomada e recusada, checkpoint local com CRC, versao remota conferida, Range/If-Range, espera progressiva limitada, pausa/continuacao/cancelamento por X/B ou toque e recuperacao em **Acoes → Downloads do Drive** apos reiniciar. O destino final so aparece completo. Parciais ficam em area tecnica separada; cancelar preserva o parcial e exige escolha explicita para continuar. [Contrato e limites](docs/DOWNLOADS_DRIVE.md).
 
 [Configuração, capacidades, caminhos e limitações do Google Drive](docs/GOOGLE_DRIVE.md).
 
@@ -117,7 +117,7 @@ A correção de persistência da Missão 3 foi preservada e ampliada na 0.10.11:
 
 O ciclo de sockets é compartilhado com o Drive, sem segunda inicialização nem encerramento indevido. Falhas registram `Result` para diagnóstico; a correção candidata do relato no Lite exige validação física.
 
-**O acesso é anônimo, sem senha e sem TLS, ao SD inteiro.** Use somente rede local confiável; não exponha o servidor em rede pública. A implementação usa temporários e verificações, mas não há comprovação de estabilidade prolongada com arquivos muito grandes no Switch. [Uso, protocolo e limites do FTP](docs/FTP.md).
+**O acesso é anônimo, sem senha e sem TLS, ao SD inteiro.** Use somente rede local confiável; não exponha o servidor em rede pública. A implementação usa temporários e verificações, mas não há comprovação de estabilidade prolongada com arquivos muito grandes no Switch. [Uso, protocolo e limites do FTP](docs/FTP.md). Durante esperas do Drive, **Y inicia/para o FTP**; a primeira ativacao exige o aviso de acesso anonimo. A simultaneidade foi testada em loopback no mesmo processo e ainda exige validacao fisica no Lite.
 
 ### 8. Compactação e extração ZIP
 
@@ -170,7 +170,7 @@ A galeria está preparada para receber imagens reais conforme o [guia de captura
 
 ## Como instalar
 
-1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.11 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
+1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.12 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
 2. **Baixe `SwitchFileManager.nro`** e o checksum correspondente. A Release v0.10.7 oferece o NRO avulso; não pressupõe o ZIP de distribuição criado no desenvolvimento atual.
 3. **Confira o SHA-256** com uma ferramenta de confiança e coloque o NRO em `sdmc:/switch/Switch File Manager/` no microSD. Se estiver usando o ZIP de teste, extraia sua pasta `switch` na raiz do cartão.
 4. **Abra pelo Homebrew Menu** em um console desbloqueado com Atmosphère. Preserve as configurações já existentes em `switch/switch-manager`.
@@ -212,6 +212,8 @@ As tabelas descrevem os contextos do código: **+ não é um comando global gara
 | FTP pela rede local | [Conexão, operações e segurança](docs/FTP.md) |
 | ZIP no microSD | [Compactação, extração e limites](docs/ZIP.md) |
 
+A [instalacao pelo Android](docs/VERSAO_E_INSTALACAO.md#instalação-pelo-android) usa o pacote experimental e preserva os dados legados.
+
 O uso do FTP local não exige serviço pago. Drive requer conta e projeto OAuth próprios e segue as cotas e condições do Google; não há promessa de armazenamento ilimitado ou gratuidade de qualquer plano externo.
 
 ## Desenvolvimento
@@ -227,7 +229,7 @@ O uso do FTP local não exige serviço pago. Drive requer conta e projeto OAuth 
 | `third_party/` | Bibliotecas incorporadas com seus créditos e licenças. |
 | `.github/workflows/` | CI e publicação manual com critérios separados. |
 
-A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.11** e é a fonte para NACP, pacote e log inicial. A Missao 3.2 acrescenta diagnosticos FTP/NRO e gerencia downloads recuperaveis; o logotipo e as demais funcionalidades permanecem preservados.
+A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.12** e é a fonte para NACP, pacote e log inicial. A Missao 3.2 preserva diagnosticos FTP/NRO e downloads recuperaveis, amplia sessoes BSD, evita esperas bloqueantes e testa FTP + Drive sobrepostos; o logotipo e as demais funcionalidades permanecem preservados.
 
 ```bash
 python3 tests/run.py
@@ -238,7 +240,7 @@ O script compila com devkitPro disponível ou com o ambiente em nuvem já prepar
 
 ## Limitações e próximos passos
 
-A causa exata das falhas fisicas de FTP e versao continua em aberto. Acesso Drive, Manter conectado e desconectar/reconectar funcionaram no relato do proprietario da 0.10.10; isso nao aprova a Missao 3.1 para producao. A nova candidata requer a [matriz fisica](docs/VALIDACAO_SWITCH_LITE_3_2.md), incluindo perda de rede, pausa/retomada e identidade do NRO. Os testes automatizados estao no [relatorio](docs/RELATORIO_VALIDACAO.md).
+O anexo atualizado aprova FTP isolado, antes e depois do Drive; a falha relatada e no uso simultaneo FTP + Drive. A causa fisica dessa falha e da versao exibida continua em aberto. Acesso Drive, Manter conectado e desconectar/reconectar funcionaram no relato do proprietario da 0.10.10; isso nao aprova a Missao 3.1 para producao. A nova candidata requer a [matriz fisica](docs/VALIDACAO_SWITCH_LITE_3_2.md), incluindo perda de rede, pausa/retomada e identidade do NRO. Os testes automatizados estao no [relatorio](docs/RELATORIO_VALIDACAO.md).
 
 **Planejado, não disponível:** USB OTG e armazenamento externo, atualização automática, instalação de pacotes de jogos, novos provedores de nuvem e exportação de documentos Google. Não há prazo prometido. Consulte o [roadmap](docs/ROADMAP.md) e os [problemas conhecidos](docs/PROBLEMAS_CONHECIDOS.md).
 

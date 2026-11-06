@@ -140,3 +140,7 @@ A suíte de host testa módulos locais, logs, ZIP real, FTP em loopback e Drive 
 
 - Downloads do Drive...: checkpoints, Pausar/Continuar/Cancelar, recuperacao de tarefas desta conta.
 - Versão e diagnóstico do NRO...: versao compilada, identificador de build, caminho em execucao e busca somente leitura de copias.
+
+## Ajustes da 0.10.12
+
+A matriz do novo anexo aprova FTP isolado/sequencial e acesso/persistência/reconexão Drive na 0.10.10; não aprova uso simultâneo nem a candidata atual. O servidor e as operações anteriores foram preservados. Durante espera de rede Drive, Y inicia/para FTP mediante aviso de acesso anônimo e B cancela. UI e Drive continuam numa thread; workers FTP não desenham. Downloads verificam espaço, preservam registros compatíveis e oferecem Preservar e voltar / Reiniciar com seguranca quando a retomada é recusada. Não foi implementada retomada de upload.

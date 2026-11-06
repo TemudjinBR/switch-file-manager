@@ -1,8 +1,8 @@
 # Roadmap
 
-## Etapa atual: FTP diagnosticavel, downloads recuperaveis e identidade 0.10.11
+## Etapa atual: simultaneidade FTP + Drive e recuperação 0.10.12
 
-As Missões 1/2/3 continuam preservadas. A Missão 3.1 acrescenta ciclo compartilhado de sockets, versão identificável e gerenciamento de contas com PKCE/state e persistência verificada. A confirmação no Switch Lite ainda depende de teste físico para o relato “Falha ao salvar login no cartão SD.”.
+As Missões 1/2/3 continuam preservadas. A Missão 3.1 acrescenta ciclo compartilhado de sockets, versão identificável e gerenciamento de contas com PKCE/state e persistência verificada. O relato “Falha ao salvar login no cartão SD.” é histórico: o anexo posterior aprova acesso/persistência/reconexão Drive e FTP isolado/sequencial, mas reprova simultaneidade, retomada e versão exibida.
 
 ## Base da reorganização e estabilização
 
@@ -15,7 +15,7 @@ A entrega desta etapa continua experimental até cumprir a matriz física em `TE
 
 ## Próximas mudanças pequenas
 
-1. Validar fisicamente a persistência/contas candidatas da v0.10.10 e identificar a chamada/errno caso o erro continue. Não presumir que a reprodução de EEXIST explica todos os cenários do SD.
+1. Validar fisicamente a candidata 0.10.12: sobreposição real FTP + Drive, recuperação de downloads e identidade. Preservar/revalidar o que já funcionou; registrar etapas/códigos sem presumir causa única.
 2. Validar o NRO no Switch Lite com Atmosphère e registrar firmware, formato do SD e modo do Homebrew Menu.
 3. Exercitar transferências prolongadas, clientes simultâneos, cancelamento, SD cheio, retomada FTP e suspensão da aplicação.
 4. Validar OAuth com o Google real e avaliar retorno sem cópia manual compatível com os escopos do gerenciador. PKCE/state já foram implementados; não confundir isso com homologação do fluxo Android↔Switch.
@@ -36,4 +36,4 @@ Não há prazo ou funcionalidade prometida sem implementação e validação. So
 
 ## Prioridade apos a Missao 3.2
 
-Executar o checklist fisico da 0.10.11, sem presumir resolucao de FTP/versao. “Falha ao salvar login no cartão SD.” e um relato historico: o acesso/Manter conectado/reconexao funcionaram na 0.10.10 relatada. Preservar esses resultados, validar os novos downloads e registrar etapa/codigo se FTP falhar. Retomada de upload permanece fora do escopo.
+Executar o checklist fisico da 0.10.12, sem presumir resolucao da simultaneidade/versao. “Falha ao salvar login no cartão SD.” e um relato historico: o acesso/Manter conectado/reconexao funcionaram na 0.10.10 relatada. Preservar esses resultados, validar os novos downloads e registrar etapa/codigo se FTP falhar. Retomada de upload permanece fora do escopo.

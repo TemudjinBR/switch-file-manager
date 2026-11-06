@@ -129,7 +129,7 @@ Na matriz física do Drive, registrar também: primeira autorização, substitui
 
 A compilação final usa nacptool real. Os testes de protocolo e armazenamento complementam, sem substituir, o NRO nativo e a matriz física.
 
-### Procedimento mínimo no Lite para esta candidata
+### Procedimento histórico no Lite para a 0.10.10
 
 1. Conferir 0.10.10 no Homebrew Menu e no menu Ações, para o caminho indicado no pacote. Registrar firmware/Atmosphère, modo applet ou memória completa, formato SD e hash do NRO.
 2. Com dados de teste, iniciar FTP, conectar na porta 2121, enviar/baixar e comparar arquivo, parar e reiniciar. Repetir após usar Drive; testar também FTP ativo antes de entrar no Drive. Repetir em applet/memória completa se disponíveis, registrando Result real se falhar.
@@ -146,3 +146,19 @@ Não provocar corte de energia, SD cheio/corrupção ou exclusão em dados do pr
 - test_io_wait: WouldBlock, timeout, cancelamento e propagacao imediata de erro de certificado, sem simular um certificado real do console.
 
 A matriz fisica corrente esta em [VALIDACAO_SWITCH_LITE_3_2.md](VALIDACAO_SWITCH_LITE_3_2.md). A validacao recebida da 0.10.10 e identificada como relato do proprietario, sem inventar firmware, formato do SD, hash/caminho ou teste executado pela equipe.
+
+## Simultaneidade e recuperação — 0.10.12
+
+`test_concurrent_network.py` compila FTP/Drive/runtime reais no mesmo executável host. Uma barreira HTTP impede o Drive de concluir até confirmar a transferência FTP completa: navegação, download, upload em múltiplos PUTs, ordens FTP→Drive/Drive→FTP, quatro clientes ociosos, quatro transferências paralelas, parada/reinício FTP com Drive pendente, parada Drive sem afetar FTP e timeout de resposta. Bytes de ambos os protocolos são comparados. Não há TLS nem emulação de BSD IPC/hardware nesse teste; timeout limitado detecta ausência de resposta/deadlocks observáveis, sem provar ausência de toda corrida possível.
+
+`test_network_lifecycle` confirma orçamento oito, fallback três em falta de recurso e propagação de erros desconhecidos, sem liberar dono alheio. Queda/retorno de rede é uma fronteira simulada; FTP usa sockets reais. `test_download_manager` acrescenta ENOSPC antes de fetch, recuperação sem perda do prefixo, consentimento para reinício e arquivo esparso de 2 GiB com 1,2 GiB de prefixo CRC real; observa o offset pedido, sem baixar 2 GiB. zlib valida independentemente o formato/CRC do journal.
+
+Reproduzir com `python3 tests/run.py`, compilar via `bash scripts/build.sh` e conferir NRO real com `python3 tests/run.py --nro SwitchFileManager.nro`. Esse último inclui NACP/ícone/build/pacote. A matriz física usa **Funcionou / Não funcionou** para cada caso e continua separada dos resultados automatizados.
+
+A execução adicional com ThreadSanitizer é reproduzível (g++/runtime TSAN necessários):
+
+```bash
+SFM_TEST_TSAN=1 TSAN_OPTIONS=halt_on_error=1:exitcode=66 python3 -m unittest discover -s tests -p test_concurrent_network.py -v
+```
+
+O sanitizer instrumenta o C++ FTP/Drive no host, não libnx/firmware. Nove cenários passaram sem relatório de corrida; isso não prova ausência de toda condição possível. Uma rodada normal encontrou a publicação tardia do diagnóstico de falha de thread (421 chegava antes do evento); a ordem foi corrigida no servidor e a suíte final repetida.

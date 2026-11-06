@@ -1,6 +1,6 @@
 # Google Drive — contas e autorização experimental
 
-**Estado: experimental na 0.10.11.** Navegação, transferências e gerenciamento de contas estão implementados e cobertos por API fictícia. O proprietario confirmou acesso Drive, Manter conectado e desconectar/reconectar no Lite com 0.10.10. A nova implementacao de downloads ainda exige validacao fisica; nao se extrapola essa aprovacao para todo o Drive. Não se solicita senha Google no aplicativo, em logs ou ao proprietário.
+**Estado: experimental na 0.10.12.** Navegação, transferências e gerenciamento de contas estão implementados e cobertos por API fictícia. O proprietario confirmou acesso Drive, Manter conectado e desconectar/reconectar no Lite com 0.10.10. A nova implementacao de downloads ainda exige validacao fisica; nao se extrapola essa aprovacao para todo o Drive. Não se solicita senha Google no aplicativo, em logs ou ao proprietário.
 
 ## Falha de persistência relatada no Switch Lite
 
@@ -75,3 +75,7 @@ A interrupcao por perda de internet falhou no teste fisico da 0.10.10. O codigo 
 A UI oferece X/Pausar, X/Continuar e B/Cancelar, tambem por toque. Estados, bytes, velocidade, espera e tentativas aparecem na sobreposicao. Acoes → Downloads do Drive lista tarefas desta conta para recuperacao apos reinicio. Cancelar mantem o parcial; nao ha retomada automatica de tarefa cancelada. Ver [contrato completo](DOWNLOADS_DRIVE.md).
 
 Essas mudancas nao implementam retomada de upload nem alteram a autorizacao aprovada. Tokens/credenciais sao preservados; renovacao usa o fluxo existente.
+
+## FTP durante navegação e transferências
+
+Na 0.10.12, o callback da thread UI mantém controles durante esperas TCP/TLS: B cancela a operação Drive, Y inicia/para FTP. A primeira ativação FTP exige o aviso existente; parar um serviço libera só sua posse. Não chamar outra API Drive no callback: OAuth/parser/SSL não são reentrantes nem uma API para múltiplas threads. Consultar [concorrência](FTP.md#simultaneidade-ftp--drive--01012) e [downloads](DOWNLOADS_DRIVE.md). A sequência física aprovada de acesso/persistência/reconexão deve ser revalidada sem pedir segredos ao proprietário.

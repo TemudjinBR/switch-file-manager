@@ -45,4 +45,17 @@ prepare calcula uma identidade deterministica vVERSAO-hash a partir dos fontes, 
 
 A busca no proprio Switch e somente leitura, restrita a sdmc:/switch, profundidade/entradas/copias/bytes limitados. Confere NRO/ASET/NACP e procura o marcador de build com memoria limitada. NROs antigos podem mostrar build indisponivel. Uma busca limitada/cancelada e identificada, sem alegar inventario integral. Nenhuma copia e removida. A versao do NACP de cada copia e mostrada separadamente da identidade em execucao.
 
-Instalacao: extraia switch/Switch File Manager/SwitchFileManager.nro do ZIP experimental na raiz do SD, abra exatamente essa copia no Homebrew Menu e confira **0.10.11 mais o build do manifesto** no aplicativo. Se divergir, a identidade apresentada nao corresponde ao pacote; consulte caminho/cópias na UI. Nao apague google.json, token.txt ou o diretorio legado para atualizar.
+Instalacao da candidata anterior (0.10.11): extraia switch/Switch File Manager/SwitchFileManager.nro do ZIP experimental na raiz do SD, abra exatamente essa copia no Homebrew Menu e confira **0.10.11 mais o build do manifesto** no aplicativo. Se divergir, a identidade apresentada nao corresponde ao pacote; consulte caminho/cópias na UI. Nao apague google.json, token.txt ou o diretorio legado para atualizar.
+
+## Instalação pelo Android
+
+A candidata atual é **0.10.12 experimental**; o pacote contém o build e o SHA-256 específicos da execução Actions. O NACP da 0.10.11 anterior também era validado: não foi comprovado por que o Homebrew Menu abriu/exibiu outra versão. Não presumir erro de instalação do proprietário.
+
+1. No navegador Android autenticado no GitHub, abrir a execução verde vinculada ao PR #1 e baixar **SwitchFileManager-validado** em Artifacts. É necessário login GitHub para baixar artefatos, sem criar/fornecer token pessoal.
+2. Extrair o ZIP de artefato. Dentro dele, extrair **SwitchFileManager-v0.10.12.zip** e ler LEIA-ME/manifesto. Evitar copiar o ZIP externo como se fosse aplicativo.
+3. Fechar o Switch File Manager antes de substituir seu executável. Pelo gerenciador Android com leitor microSD, copiar a pasta `switch` do pacote para a raiz do SD. Como alternativa, usar um cliente FTP Android e outro servidor FTP já disponível no console; transferir o NRO completo para o destino oficial. Não substituir o NRO por meio de uma transferência ainda pendente do próprio aplicativo em teste.
+4. Destino exato: `sdmc:/switch/Switch File Manager/SwitchFileManager.nro`. Não criar uma pasta extra com o nome do ZIP; não mover/apagar `switch/switch-manager/`, tokens, configurações, favoritos ou histórico.
+5. Reabrir/atualizar a listagem do Homebrew Menu e executar essa cópia. Conferir **0.10.12**, build igual ao manifesto em Ações → Versão e diagnóstico do NRO, e Caminho em execução quando disponível. O caminho pode não ser fornecido pelo launcher; a UI informa essa ausência.
+6. Se divergir, usar Conferir cópias no SD (somente leitura) e registrar versão/build/caminho mostrados. O diagnóstico não exclui cópias automaticamente. Conferir SHA-256 com ferramenta Android que suporte hash, se disponível; nome do arquivo sozinho não comprova identidade.
+
+A instalação não requer computador local nem limpeza de dados. A versão incorporada/NACP/ícone e o empacotamento são conferidos automaticamente; o valor exibido pelo launcher e a cópia efetivamente aberta precisam do teste físico.

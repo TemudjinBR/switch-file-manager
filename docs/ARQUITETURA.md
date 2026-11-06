@@ -81,6 +81,14 @@ DownloadManager separa controle/persistencia de HTTP/OAuth. O adaptador Drive va
 
 A UI continua sincrona, com callbacks de progresso/controle e pausa que suspende requisicoes apos fechar a operacao corrente. Parada de rede tem backoff limitado, e recuperacao apos reinicio e explicita pelo menu. Arvores preservam arquivos concluidos e a estrutura criada quando um arquivo falha.
 
-SSL nao bloqueante e waitIo sao usados somente no contexto dos downloads: repetem WouldBlock, respeitam limites/controle e propagam erros de certificado. O fluxo de login interativo que funcionou no hardware permanece com seu comportamento anterior. DNS/TCP ainda dependem do sistema.
+Na 0.10.12, SSL nao bloqueante e waitIo sao usados nas chamadas interativas Drive: repetem WouldBlock, respeitam limites/controle e propagam erros de certificado. A logica OAuth/persistencia aprovada permanece; o transporte TLS interativo agora tambem consulta o callback UI e requer revalidacao fisica. DNS e E/S SD ainda dependem do sistema; TCP interativo usa polling curto/timeout.
 
 BuildInfo e somente leitura. A identidade de fontes entra no cabecalho gerado e no NRO/manifesto, com validação pelo empacotador; nao depende de .git presente na copia devkitPro.
+
+## Concorrência delimitada — 0.10.12
+
+FTP mantém listener e até quatro threads clientes; Drive e desenho permanecem na thread principal. O callback de rede faz polling de controles e redesenho limitado a 80 ms, sem chamadas Drive recursivas. Nenhuma thread FTP acessa painéis/desenho/OAuth. O callback pode iniciar/parar FTP enquanto a chamada HTTP/TLS aguarda. A parada Drive marca cancelamento e adia closeNetwork até o último RequestScope sair, depois do destrutor Conn fechar seus descritores/contexto de conexão.
+
+A posse do runtime continua protegida por mutex e idempotente por serviço. O orçamento é oito sessões BSD, fallback para três somente em erros explícitos de recursos. Esperas FTP/TCP usam sockets não bloqueantes e select instantâneo; a espera de 10 ms ocorre fora da sessão IPC. O worker é dono do fechamento de seu socket; não há shutdown concorrente na UI sobre descritores reutilizáveis. SSL usa WouldBlock/timeout já verificados sem ignorar certificado.
+
+Isso não transforma Drive numa API multithread: estados JSON/OAuth/diagnóstico permanecem restritos à thread chamadora. Não chamar netInit/netExit/API Drive de outro worker. A UI pode solicitar cancelamento, mas DNS síncrono, latência de disco e serviços do console ainda podem atrasar sua resposta. Não se implementou navegação livre nos dois painéis durante uma transferência remota.

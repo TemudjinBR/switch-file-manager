@@ -44,3 +44,7 @@ No login Drive, B ou o botão Cancelar por toque encerra o diálogo local; ele n
 ## Caminho para as ferramentas
 
 **X → Ações** reúne copiar, mover, renomear, criar pasta, apagar e os submenus Seleção múltipla, Fila de transferências, Ordenar e buscar, ZIP, Propriedades e espaço, Favoritos e histórico, Google Drive e Transferência Wi-Fi. Consulte o [mapa completo dos menus](FUNCIONALIDADES.md).
+
+## Esperas Drive — candidata 0.10.12
+
+Durante navegação/transferência remota, B solicita cancelamento e Y inicia/para o FTP; a primeira ativação pede confirmação do acesso anônimo. Fora dessa espera, Y continua marcando itens como antes. X e toque continuam Pausar/Continuar em downloads, B/toque Cancelar. DNS e E/S SD podem atrasar a resposta. Não há navegação livre dos painéis durante uma transferência Drive síncrona.

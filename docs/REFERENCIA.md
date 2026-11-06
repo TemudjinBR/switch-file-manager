@@ -107,12 +107,16 @@ A Missao 3.1 entregou **0.10.10 experimental**, mesma branch/PR #1. Antes de alt
 
 FTP/Drive usam exclusivamente socket_runtime; não inserir socketInitialize/socketExit nos consumidores. O último dono encerra, e falhas permitem retry. VERSION prevalece sobre argumentos antigos do make; NACP é conferido por conteúdo. O menu Ações e log de caminho ajudam a diferenciar cópias antigas no Homebrew Menu.
 
-O [histórico da Missão 3](historico/VALIDACAO_MISSAO_3.md) preserva sua execução anterior; [relatório atual](RELATORIO_VALIDACAO.md) e logs/artefatos do Actions são a evidência desta revisão. Nada comprova aprovação física de FTP, contas ou versão no Lite até executar a matriz. Não fazer merge ou Release nesta missão.
+O [histórico da Missão 3](historico/VALIDACAO_MISSAO_3.md) preserva sua execução anterior; [relatório atual](RELATORIO_VALIDACAO.md) e logs/artefatos do Actions são a evidência desta revisão. Esse era o estado daquela rodada; o anexo posterior aprova FTP isolado/sequencial e acesso/persistência/reconexão Drive, sem aprovar simultaneidade ou a nova candidata. Não fazer merge ou Release nesta missão.
 
 ## Continuidade da Missao 3.2
 
-Atual: 0.10.11 experimental, mesma branch/PR. O relato fisico aprovou acesso/persistencia/reconexao do Drive na 0.10.10, mas reprovou FTP/versao/retomada de download; a 3.1 nao esta aprovada para producao. Preservar a autenticacao e os dados reais.
+Atual: 0.10.12 experimental, mesma branch/PR. O relato fisico aprovou acesso/persistencia/reconexao do Drive na 0.10.10, tambem aprovou FTP isolado/antes/depois do Drive; reprovou FTP simultaneo com Drive, versao e retomada de download; a 3.1 nao esta aprovada para producao. Preservar a autenticacao e os dados reais.
 
 DownloadManager esta em src/cloud/download_manager.cpp, contrato em include/cloud/download_manager.h. Usa Transport para reaproveitar HTTP/OAuth existentes, estado por conta/tarefa e journals transfer.bin no diretorio tecnico downloads. Nunca voltar a remover destino/parcial em falha de rede. Conhecer [DOWNLOADS_DRIVE.md](DOWNLOADS_DRIVE.md) antes de alterar checkpoints, cancelamento ou publicacao.
 
 Diagnostico local FTP usa NIFM/gethostid e codigos por etapa; nenhuma sonda externa e necessaria. Versao/build sao gerados em prepare; nao editar version.h. build_info le NROs sem altera-los e tem limites de busca. Resultados atuais no [relatorio](RELATORIO_VALIDACAO.md); [3.1 historica](historico/VALIDACAO_MISSAO_3_1.md).
+
+A rodada 0.10.12 parte de c78ce35 (não voltar à base d66994c descartando correções). O servidor FTP existente foi preservado; a investigação de sessões BSD/esperas e o callback UI são descritos em ARQUITETURA e FTP. Testes de simultaneidade exigem barreira no mesmo processo: testes sequenciais de posse não bastam. Downloads mantêm SFMDL2 compatível, CRC, consulta de espaço e escolha de reinício. Não prometer retomada de upload.
+
+No callback setNetworkPump, somente UI/FTP/controle de cancelamento; nunca chamar outra API Drive. Estados de autenticação pertencem à thread principal. O SDK/SSL real e o modo applet não são simulados pelos stubs. A versão do pacote é 0.10.12; instalação Android e comparação versão/build/caminho em VERSAO_E_INSTALACAO. Relatos físicos correntes em VALIDACAO_SWITCH_LITE_3_2.

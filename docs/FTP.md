@@ -44,13 +44,13 @@ Relato: **FTP indisponível — Falha ao inicializar a rede.** O código anterio
 
 Na 0.10.10, [socket_runtime.cpp](../src/network/socket_runtime.cpp) coordena uma posse idempotente por serviço. O primeiro consumidor inicializa; o último encerra. Parar FTP não encerra sockets do Drive; encerrar Drive não encerra FTP. Falha deixa o consumidor livre para tentar novamente. A inicialização SSL desfaz somente sua própria posse em falha, preservando o FTP.
 
-Falhas de `socketInitializeDefault` registram `Result=0xXXXXXXXX`, módulo/descrição, tipo de applet e memória total/usada quando o SDK permite consultá-las. Logs em `sdmc:/switch/Switch File Manager/logs/sfm.log`, categoria REDE. Result não é errno e não é substituído por código inventado. O transporte de arquivos mantém porta 2121, buffers existentes e aviso anônimo; não há promessa de resolver falta real de memória apenas por unificar os serviços.
+Falhas de inicialização de sockets registram `Result=0xXXXXXXXX`, módulo/descrição, tipo de applet e memória total/usada quando o SDK permite consultá-las. Logs em `sdmc:/switch/Switch File Manager/logs/sfm.log`, categoria REDE. Result não é errno e não é substituído por código inventado. O transporte de arquivos mantém porta 2121, buffers existentes e aviso anônimo; não há promessa de resolver falta real de memória apenas por unificar os serviços.
 
 Os testes de ciclo de vida exercitam o servidor FTP real em loopback, upload/download, parada/reinício, falha recuperável e Drive → FTP/FTP → Drive. A fronteira libnx simula serviço já inicializado e Result de falha; não simula applet, Wi-Fi, SSL ou memória do console. Validar no Lite em modo applet e memória completa, antes e depois de usar Drive.
 
 ## Correcao e diagnostico da Missao 3.2
 
-O proprietario confirmou falha de FTP isolado e apos Drive na 0.10.10. A correcao de posse compartilhada continua necessaria, mas nao comprovou a causa exclusiva no hardware e a 3.1 nao foi aprovada para producao.
+O anexo atualizado confirma FTP isolado, antes e apos Drive funcionando na 0.10.10; somente o uso simultaneo foi reprovado. O relato inicial foi retificado. A correcao de posse compartilhada continua necessaria, mas nao comprovou a causa exclusiva no hardware e a 3.1 nao foi aprovada para producao.
 
 O codigo anterior descobria IP conectando um socket UDP a 1.1.1.1:53. A nova candidata usa nifmGetCurrentIpAddress e estado local; se NIFM estiver indisponivel, tenta gethostid do BSD ja inicializado, registrando a origem. FTP LAN nao exige acesso a um servidor externo. Isso remove uma dependencia concreta, sem provar a causa do relato fisico.
 
@@ -59,3 +59,15 @@ Falhas agora aparecem na propria tela com etapa e codigo: sockets-inicializar/Re
 O dialogo de erro oferece diagnostico detalhado; o dialogo ativo tambem permite consulta. Result, errno e pthread sao codigos de origens distintas. O contexto mostra applet/memoria e donos FTP/Drive. Nao se reinicia globalmente sockets enquanto o Drive os possui. Parada/reinicio libera somente os descritores e a posse do FTP.
 
 O worker registra erro de select, e uma nova inicializacao recolhe threads/descritores terminados. Testes simulam queda/retorno de Wi-Fi e falhas em cada etapa, com transferencias FTP reais em loopback. NIFM, Wi-Fi, recursos/threads e modos applet/memoria completa continuam dependentes do Lite. [Checklist](VALIDACAO_SWITCH_LITE_3_2.md).
+
+## Simultaneidade FTP + Drive — 0.10.12
+
+O servidor existente foi mantido: porta 2121, quatro clientes, ativo/passivo e operações anteriores. O SDK libnx 4.12.0 usa três sessões BSD por padrão; cada chamada IPC síncrona ocupa uma sessão até responder. O código anterior podia ocupar essas sessões com recv/select bloqueantes de clientes ociosos, enquanto outro serviço aguardava uma sessão livre. Isso é uma limitação comprovada no código do SDK, **não a causa física comprovada do Lite**.
+
+A candidata solicita oito sessões, mantendo buffers padrão; somente falta explícita de recursos permite fallback para três, identificado na tela. Controle, listener e dados FTP usam O_NONBLOCK, select com timeout zero e espera de 10 ms fora do IPC. A thread do cliente fecha seus próprios descritores; a UI sinaliza parada e aguarda os workers, evitando shutdown sobre um número fechado/reutilizado pelo Drive.
+
+Navegação/envio/download Drive consultam a UI durante espera TCP/TLS. **Y** inicia ou para FTP sem chamar novamente a API Drive; a primeira ativação exige confirmação do acesso total anônimo. **B** solicita cancelamento Drive. Pausar downloads mantém o FTP ativo; voltar o painel ao SD não desconecta conta nem FTP. Os controles não permitem navegar outro painel durante uma transferência remota síncrona.
+
+O diagnóstico FTP é paginado para não ocultar códigos fora da tela e inclui contexto Drive: etapa TCP/SSL, Result, errno, requisições em andamento, parada solicitada, sessões BSD efetivas, donos, tipo de applet/memória quando disponíveis. Não contém autorização ou tokens. Falha real de recursos permanece visível; não se força reinicialização global.
+
+`test_concurrent_network` executa ambos os serviços de produção no **mesmo processo**, mantém a resposta HTTP Drive pendente e só a libera depois de terminar/verificar FTP. Cobre download, upload em múltiplos PUTs, navegação, quatro clientes, parada/reinício FTP e parada Drive durante requisição. Isso prova sobreposição no host POSIX, sem TLS, e não desempenho/estabilidade no libnx. O [checklist físico](VALIDACAO_SWITCH_LITE_3_2.md) testa as duas ordens e modos disponíveis.

@@ -1,8 +1,19 @@
 # Histórico de alterações
 
+## 0.10.12 — experimental, simultaneidade e recuperação (06/11/2026)
+
+- Matriz física corrigida pelo novo anexo: FTP isolado/antes/depois do Drive aprovados; simultaneidade, retomada e versão exibida reprovadas na 0.10.10. Preservado o trabalho posterior de c78ce35/0.10.11.
+- Orçamento de oito sessões BSD, fallback diagnosticado para três somente em erros explícitos de recursos; buffers padrão preservados.
+- FTP usa sockets não bloqueantes e espera fora do IPC BSD. Cada worker fecha seus próprios descritores, evitando shutdown pela UI sobre números reutilizados.
+- Navegação, envio e download Drive consultam a UI durante espera TCP/TLS; Y inicia/para FTP, B cancela. TLS mantém verificação de certificados. DNS e E/S SD ainda dependem do sistema.
+- Encerramento Drive em requisição pendente adia liberação do SSL/sockets até fechar a conexão, preservando a posse FTP. Estado OAuth legado e persistência aprovados preservados.
+- Downloads verificam espaço para bytes restantes/margem, aceleram CRC compatível com journals existentes e oferecem reinício seguro com preservação do parcial anterior.
+- Testes no mesmo processo sobrepõem navegação/download/upload Drive e até quatro transferências FTP, com barreiras e comparação de conteúdo; regressões de ENOSPC, consentimento e prefixo esparso de 1,2 GiB em arquivo de 2 GiB.
+- Identidade/NACP/pacote 0.10.12, instalação pelo Android e novo checklist físico. Sem merge/main/Release; não homologado no Switch Lite.
+
 ## 0.10.11 — experimental, Missao 3.2 (06/11/2026)
 
-- Relato fisico da 0.10.10 incorporado: Drive/persistencia/reconexao funcionaram; FTP, versao e recuperacao de download falharam. A 3.1 nao esta aprovada para producao.
+- Relato inicialmente recebido foi incorporado; o anexo posterior retifica FTP: isolado e sequencial funcionaram, simultaneo falhou. Versao e recuperacao de download falharam. A 3.1 nao esta aprovada para producao.
 - FTP usa IP local NIFM/BSD, sem sondagem externa, com diagnosticos de etapa/Result/errno/pthread na tela e threads com retorno verificado.
 - Downloads passam a ter area tecnica, checkpoints/CRC, Range/If-Range, revisao remota, backoff limitado, pausa/continuacao/cancelamento e recuperacao explicita apos reinicio.
 - Mudanca de versao remota ou Range recusado reinicia em outro parcial; destinos pessoais/concluidos sao preservados. Nenhuma retomada de upload implementada.

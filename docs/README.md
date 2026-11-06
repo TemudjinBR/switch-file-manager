@@ -1,6 +1,6 @@
 # Documentação do Switch File Manager
 
-A apresentação oficial está no [README principal](../README.md). A revisão do PR #1 usa **0.10.11 experimental**; a última Release pública verificada em 05/11/2026 é **v0.10.7**. Recursos implementados, resultados no host e validação física são classificados separadamente.
+A apresentação oficial está no [README principal](../README.md). A revisão do PR #1 usa **0.10.12 experimental**; a última Release pública verificada em 05/11/2026 é **v0.10.7**. Recursos implementados, resultados no host e validação física são classificados separadamente.
 
 ## Para usar o aplicativo
 
@@ -26,7 +26,7 @@ A apresentação oficial está no [README principal](../README.md). A revisão d
 | Evidências da revisão atual | [Relatório de validação](RELATORIO_VALIDACAO.md) |
 | Base da reorganização e complemento da Missão 2 | [Auditoria](AUDITORIA.md) |
 | Implementação futura, sem promessas de prazo | [Roadmap](ROADMAP.md) |
-| Mudanças por versão | [Changelog](../CHANGELOG.md) e [notas 0.10.8](../release-notes/v0.10.8.md) |
+| Mudanças por versão | [Changelog](../CHANGELOG.md) e [notas 0.10.12](../release-notes/v0.10.12.md) |
 | Marca e ícone que também entra no NRO | [Identidade oficial](../assets/branding/README.md) |
 | Bibliotecas, créditos e licenças preservadas | [Terceiros](../third_party/README.md) |
 | Histórico de apresentação e limitações externas da Missão 2 | [Relatório de entrega](MISSAO_2.md) |
