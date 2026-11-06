@@ -1,6 +1,6 @@
 # Roadmap
 
-## Etapa atual: simultaneidade FTP + Drive e recuperação 0.10.12
+## Etapa atual: atualizador experimental 0.10.13 e gates de distribuição
 
 As Missões 1/2/3 continuam preservadas. A Missão 3.1 acrescenta ciclo compartilhado de sockets, versão identificável e gerenciamento de contas com PKCE/state e persistência verificada. O relato “Falha ao salvar login no cartão SD.” é histórico: o anexo posterior aprova acesso/persistência/reconexão Drive e FTP isolado/sequencial, mas reprova simultaneidade, retomada e versão exibida.
 
@@ -27,7 +27,7 @@ A entrega desta etapa continua experimental até cumprir a matriz física em `TE
 ## Funcionalidades futuras, fora desta missão
 
 - USB OTG/armazenamento externo conforme suporte real de libnx e Atmosphère.
-- Atualização automática com verificação, integridade e recuperação.
+- Homologar o atualizador implementado nesta missão; assinatura independente de manifesto permanece planejada.
 - Instalação de pacotes de jogos (NSP/XCI/NSZ), ainda sem implementação; eventual escopo/viabilidade depende de tarefa específica.
 - Novos provedores de nuvem e exportação de documentos Google.
 - Melhorias visuais depois de regressão documentada da interface atual.
@@ -37,3 +37,7 @@ Não há prazo ou funcionalidade prometida sem implementação e validação. So
 ## Prioridade apos a Missao 3.2
 
 Executar o checklist fisico da 0.10.12, sem presumir resolucao da simultaneidade/versao. “Falha ao salvar login no cartão SD.” e um relato historico: o acesso/Manter conectado/reconexao funcionaram na 0.10.10 relatada. Preservar esses resultados, validar os novos downloads e registrar etapa/codigo se FTP falhar. Retomada de upload permanece fora do escopo.
+
+## Prioridade da Missão 3.3
+
+Atualizador/auxiliar/canais estão implementados e em teste; assinatura independente continua planejada. A prioridade é homologar o [checklist 3.3](VALIDACAO_SWITCH_LITE_3_3.md), revalidar funções aprovadas e aplicar proteção administrativa real da main antes da primeira promoção. Nenhuma aprovação física é criada pela automação.

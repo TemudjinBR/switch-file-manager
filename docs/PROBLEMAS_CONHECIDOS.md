@@ -68,3 +68,7 @@ Checkpoint/fsync e renomeacao nao garantem atomicidade contra corte eletrico. FA
 Na 0.10.12, a consulta de espaço livre usa statvfs e considera bytes restantes mais margem mínima de 32 KiB para registros. Não reserva espaço exclusivo: FTP/outro escritor pode consumi-lo depois; erros de escrita continuam preservando o checkpoint. A verificação CRC é local e compatível com journals 0.10.11; não substitui hash remoto autenticado. Parciais abandonados não são expurgados.
 
 A UI e o Drive usam uma única thread, com callback não reentrante durante esperas. Não há múltiplas operações Drive concorrentes; o paralelismo implementado é entre os workers FTP e a operação Drive. DNS síncrono, latência SD, suspensão e limites SSL do aparelho ainda exigem avaliação. Não modificar simultaneamente o mesmo arquivo por FTP e Drive nem os arquivos internos de OAuth/journal: não existe lock global entre protocolos.
+
+## Atualizador — Missão 3.3
+
+Atualização está implementada, mas não homologada no Lite. Sem Releases compatíveis com update.json, o app não terá versão instalável; artefatos Actions exigem instalação inicial pelo Android. DNS/SD podem atrasar cancelamento/saída; não há assinatura independente nem retomada do download do atualizador. Backup/rename não garantem atomicidade elétrica, e áreas antigas consomem SD. main está sem proteção na consulta desta missão, portanto promoção está bloqueada. [Limites e recuperação](ATUALIZACOES.md).

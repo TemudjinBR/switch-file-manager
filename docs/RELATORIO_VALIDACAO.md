@@ -1,80 +1,83 @@
-# Validação — Missão 3.2, simultaneidade e recuperação
+# Validação — Missão 3.3, atualizações e distribuição
 
-## Estado inicial e escopo
+## Base, estado remoto e preservação
 
-Em 06/11/2026, branch limpa `codex/reorganizacao-estabilizacao`, HEAD **c78ce357891a50d66b70ad90c224c49d2e2bd0aa**, VERSION 0.10.11, PR #1 aberto/sem merge, Actions [42164373035](https://github.com/TemudjinBR/switch-file-manager/actions/runs/42164373035) verde. A base pedida d66994c/0.10.10 era ancestral: as correções posteriores foram preservadas. Main era `db81e91ff73852a933f8c93a5d4177c3a98de2f0`. A suíte inicial com o NRO anterior passou **138/138**, em 69,828 s.
+Base limpa **7116e3415e808dc8a21f0ce2318a264c1960b3cd**, candidata 0.10.12, branch codex/reorganizacao-estabilizacao. PR #1 aberto/sem merge; [Actions 42241739165](https://github.com/TemudjinBR/switch-file-manager/actions/runs/42241739165) aprovado. Main em db81e91ff73852a933f8c93a5d4177c3a98de2f0. A suíte inicial com NRO anterior passou **151/151** em 95,858 s. [Relatório 3.2 preservado](historico/VALIDACAO_MISSAO_3_2_SIMULTANEIDADE.md).
 
-O anexo atualizado aprova FTP isolado/antes/depois do Drive e acesso/persistência/reconexão Drive; reprova simultaneidade, retomada e versão exibida. Isso retifica o relato inicialmente usado na [primeira rodada 3.2](historico/VALIDACAO_MISSAO_3_2_INICIAL.md). Não reconstruímos o FTP. Históricos das Missões 1/2/3/3.1 continuam preservados; nenhuma nova aprovação física foi fabricada.
+O anexo 3.3 foi tratado como a missão solicitada, preservando os resultados físicos anteriores: FTP isolado/sequencial e acesso/persistência/reconexão Drive aprovados pelo proprietário; simultaneidade/retomada/versão e a nova atualização ainda dependem de hardware. Nenhuma nova homologação foi presumida.
 
-## Causas comprovadas e hipóteses
+## Implementação
 
-- **SDK/código:** libnx 4.12.0 configura três sessões BSD. `_bsdDispatchImpl` mantém uma sessão durante `svcSendSyncRequest`; `sessionmgrAttachClient` espera sem timeout quando todas estão ocupadas. Vários recv/select FTP bloqueantes podem impedir outra chamada de obter sessão. É evidência do mecanismo de contenção, **não prova da causa física do Lite**. Fontes primárias: [socket.c](https://github.com/switchbrew/libnx/blob/7644c9b26099aa2d2145bc72a21ee24190e92085/nx/source/runtime/devices/socket.c), [bsd.c](https://github.com/switchbrew/libnx/blob/7644c9b26099aa2d2145bc72a21ee24190e92085/nx/source/services/bsd.c), [sessionmgr.c](https://github.com/switchbrew/libnx/blob/7644c9b26099aa2d2145bc72a21ee24190e92085/nx/source/sf/sessionmgr.c).
-- **UI/transporte:** Drive executava operações síncronas sem consultar controles durante navegação/envio em espera; SSL bloqueante do SDK pode esperar minutos. O callback interativo cobre TCP/TLS e preserva validação de certificados. DNS/SD ainda dependem do sistema.
-- **Recuperação:** 0.10.11 já implementava checkpoints/CRC/revisão/Range/backoff. A rodada acrescenta espaço livre, CRC mais rápido compatível e escolha de reinício. Os cenários POSIX reproduzem perda de corpo/rede e recuperação; a causa específica da queda física ainda não foi medida no console.
-- **Versão:** NACP dos builds anteriores estava correto nos artefatos validados. Não há caminho/hash do aparelho para provar cópia antiga, launcher ou instalação. Mantemos build/caminho e busca somente leitura; candidata 0.10.12 diferencia a nova execução.
+- Canal estável padrão, experimental explícito e preferências persistidas, checagem ao abrir opcional com intervalo, consulta manual, notas, versão/tamanho/estado/bytes e cancelamento de tarefa em worker independente.
+- Transporte HTTPS próprio, contexto SSL separado e terceira posse do runtime, sem reentrar em OAuth/Drive. Certificados/nome/data verificados; timeouts e respostas parciais/limites tratados. Consulta anônima, sem token pessoal no NRO.
+- Manifesto oficial e SHA-256 incremental de principal/auxiliar, comparação de versão, metadados NRO/NACP/build e caminho oficial conferidos. Sem assinatura independente: confiança HTTPS/GitHub explicitada em [ATUALIZACOES](ATUALIZACOES.md).
+- Áreas exclusivas, journal, hash anterior, backup e instalação somente em NRO auxiliar após encerrar o principal; idempotência, recuperação e rollback explícitos. Nenhuma cópia duplicada é removida. SD real/corte elétrico não são simulados por fsync/rename no host.
+- Makefile compila os dois NROs; pacote contém ambos, manifestos, instruções Android e checksums. Fontes do auxiliar entram na identidade do build.
+- Workflows manuais de experimental e promoção estável; gate de proteção, revisão, último CI exato, relatório físico e aprovação do proprietário vinculada a SHA/versão/hashes. Não há promoção por CI verde, force-push, retag ou sobrescrita de Release.
 
-Memória/applet, limites de sessões/serviços no firmware, SSL nativo, cartão e latência/conectividade real permanecem hipóteses verificáveis pelo diagnóstico. Não se atribui falha física a uma delas sem registro do Lite.
+## Evidências e restrições do ambiente
 
-## Correções e preservação
+Pesquisa do [nx-hbloader](https://github.com/switchbrew/nx-hbloader/blob/82b95122c5ae8dc059bf23893ba7623c72c86773/source/main.c) confirma leitura/fechamento do NRO antes de mapear/saltar. libnx expõe envHasNextLoad/envSetNextLoad. O projeto usa auxiliar separado para não trocar seu próprio executável; isso não dispensa teste da passagem/retorno no Lite/Atmosphère real.
 
-Runtime solicita oito sessões BSD, buffers padrão, fallback para três apenas em falta explícita de recursos e diagnóstico do orçamento efetivo. FTP usa sockets não bloqueantes/select instantâneo e espera fora do IPC. Falha de thread publica diagnóstico antes de devolver 421 ao cliente, eliminando a corrida observada na regressão. O worker fecha seu próprio socket; a UI não faz shutdown sobre descritor potencialmente reutilizado.
+A API de branch retornou main **protected: false**, enforcement off e contexts vazios em 06/11/2026. O conector fornece essa leitura, mas nenhuma ferramenta administrativa de proteção de branch foi disponibilizada. Não houve PUT de proteção nem rejeição 403 correspondente; não atribuir a ausência a credenciais sem essa evidência. O host api.github.com não está autorizado pela política do CLI do ambiente; não se tentou contorná-la. Não foram solicitados tokens pessoais.
 
-UI/Drive permanecem na thread principal, sem API Drive reentrante. Callback desenha/lê controles durante espera: Y inicia/para FTP com consentimento anônimo e B cancela Drive. Parada Drive pendente marca cancelamento e adia liberação de SSL/runtime até destruir a conexão; FTP mantém sua posse. Não há navegação livre de painéis durante transferência nem operações Drive paralelas.
+A proteção **não foi configurada**: o workflow recusa promover nessa condição. Também faltam homologação física, comentário de aprovação e relatório aprovado para a candidata. Esses gates não impedem CI/artefato experimental, mas impedem primeira promoção. [Processo e condições](PROMOCAO_E_RELEASES.md).
 
-Downloads consultam statvfs para bytes restantes mais margem; falha SD não é erro Google. CRC32 por tabela mantém SFMDL2 compatível. Mudança de revisão/Range recusado oferece Preservar e voltar / Reiniciar com seguranca; o parcial anterior fica preservado. Nenhum upload passa a ter retomada persistente.
-
-OAuth/persistência e caminhos legados, dois painéis, logo oficial, porta 2121, ZIP e operações anteriores preservados. Os testes usam somente arquivos e contas fictícios. Não houve acesso/modificação ao SD pessoal ou ao projeto separado Switch-Manager.
-
-## Testes e compilação
+## Testes e build
 
 | Verificação final local | Resultado |
 | --- | --- |
-| Suíte antes do build | 151 casos: 149 aprovados, dois dependentes de NRO ignorados, zero falhas; 109,048 s |
-| Suíte completa com NRO final | **151/151 aprovados**, zero falhas/ignorados; 96,354 s |
-| Rede/autenticação | 51 casos, incluindo persistência/contas/renovação/401 e falhas SD |
-| Simultaneidade | Nove casos com os serviços no mesmo processo, comparação de bytes e timeout de deadlock |
-| ThreadSanitizer | Os mesmos nove cenários passaram sem relatório de corrida; 29,589 s, apenas C++ host |
-| Gerenciador | 21 casos, incluindo ENOSPC, recusa de reinício e prefixo esparso grande |
-| Ciclo de vida | Nove casos; regressão do diagnóstico 421 aprovada após correção |
-| Build real | devkitA64 r29.2-1/libnx 4.12.0-1, via `/workspace/sfm-environment/build.sh`, cópia descartável |
-| NRO/NACP | **911.064 bytes**, título Switch File Manager, versão **0.10.12**, segmentos/ASET/NACP aprovados |
-| Identidade dos fontes | **v0.10.12-9cf3464174eb**, conferida no NRO e manifesto |
-| Ícone oficial | Comparado byte a byte no NRO; SHA-256 preservado |
-| Distribuição | ZIP determinístico/lista permitida, manifesto/caminho/Android e SHA-256 aprovados; sem credenciais reais |
-| Documentação | Links/âncoras/imagens de 30 documentos válidos; Markdownlint em 18 alterados, zero erros |
-| Workflows/Git | actionlint 1.7.7 e diff --check aprovados; build não reescreve fontes |
+| Suíte sem NRO | 192 casos: 189 aprovados, três dependentes de binário ignorados; zero falhas; 112,150 s |
+| Suíte com NRO/auxiliar reais | **192/192 aprovados**, zero falhas/ignorados; 113,949 s |
+| Atualizador | 25 casos: canais/versões/origem, API/rate limit, chunked/parcial/checksum, corrupção, caminhos, transação/rollback/crashes e FTP real com download pendente |
+| ThreadSanitizer | **25 cenários aprovados**, sem relatório de corrida no C++ host; 30,690 s |
+| Política/controlador | Oito casos de gates e cinco de controlador; API/processos fictícios, sem publicação ou merge reais |
+| Rede/autenticação anterior | Regressões mantidas, incluindo 51 cenários de rede/contas, nove de simultaneidade FTP/Drive e dez de ciclo de vida com terceiro dono Updates |
+| Compilação real | devkitA64 r29.2-1/libnx 4.12.0-1, wrapper configurado, mesma imagem fixada por digest da 3.2 |
+| Principal | **1.033.944 bytes**, NACP 0.10.13, título Switch File Manager |
+| Auxiliar | **386.776 bytes**, NACP 0.10.13, título Atualizador do Switch File Manager |
+| Build dos dois NROs | **v0.10.13-d0c05964fc04**, correspondente aos fontes |
+| Distribuição | NROs, ZIP para SD, manifestos e sidecars verificados; ícone oficial comparado byte a byte nos dois NROs |
+| Documentação/workflows | 34 documentos com links/âncoras/imagens válidos; Markdownlint em 17 alterados e actionlint aprovados |
+| Git | diff --check aprovado; build não reescreve fontes; artefatos ignorados pelo versionamento |
 
-Uma rodada intermediária reprovou um caso: o cliente recebia 421 antes da publicação do evento de erro de thread. A ordem foi corrigida no servidor, sem introduzir espera artificial no teste. A tabela usa a suíte completa posterior à correção; não reaproveita a aprovação do NRO anterior. Avisos restantes da compilação são funções estáticas não usadas do stb_truetype e limite de arquivos grandes do miniz, sem erro de build.
+A execução final foi `bash scripts/build.sh`: suíte host, compilação real dos dois NROs, validadores NRO/NACP/build, suíte com binários e empacotamento. O SHA do ícone oficial continua 858ebcb92444859e77ba2485a9532bedda25254ddc00d3fca72517eb5ff38cca. Warnings restantes são funções estáticas não utilizadas do stb_truetype e a nota de arquivos grandes do miniz; o aviso do compilador sobre std::sort em array pequeno foi eliminado por verificação direta dos três pares de assets.
 
-SHA-256 **local** do NRO final:
-
-```text
-a43d0559d4f7fbad0a640e38bf9ed270b19be9dd4ed1e4ee0a473693001f76f8
-```
-
-SHA-256 **local** de SwitchFileManager-v0.10.12.zip:
+Hashes **locais** (usar os sidecars do artefato remoto específico ao baixar):
 
 ```text
-8dfbc5932270e78af49b266ca2a2c41118d7eac2adc8ede88f939a29da5a5e2c
+SwitchFileManager.nro
+786f1d007479305a6fec93ceeb617a8824545a5d486c527b0f442d58caf03bbe
+
+SfmUpdateHelper.nro
+db7da0fbbeeb3e19deb9026aedc1896c0f3d76eea6f91f5aa47bb1b05703b521
+
+dist/SwitchFileManager-v0.10.13.zip
+c17e2a4e1ab4bc9352c122d01834da4d69cee64651ad56b05b989f766992aacf
+
 ```
 
-Imagem fixada: `devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282`. Builds remotos podem diferir por caminhos de debug: usar o sidecar do artefato baixado; a identidade dos fontes deve continuar igual.
+Caminhos de debug podem mudar hashes entre build local e remoto; build/versão devem coincidir. O manifesto local de desenvolvimento pode ter commit zero, que não é elegível para publicação; no Actions, SFM_SOURCE_COMMIT recebe o SHA do checkout. A mensagem “Release idêntica já publicada” nos testes vem da API fictícia de idempotência, não de uma Release real.
 
-Testes novos usam **os dois serviços no mesmo processo**, com barreiras HTTP: FTP deve completar e ter seus bytes comparados antes de liberar a resposta Drive. Incluem navegação/download/upload em múltiplos PUTs, quatro clientes e transferências paralelas, parada/reinício independente, cancelamento e timeout observável. Isso não simula IPC/SSL/applet.
+Os novos testes usam SHA comparado com hashlib, parser/manifestos e E/S reais temporários, sem dados pessoais; HTTP loopback testa seleção de canal, resposta parcial, chunked, corrupção, cancelamento, erro de rede/limite e responsividade do worker. Falhas/crashes entre renomeações exercitam recuperação/rollback com semântica fsdev sem sobrescrita. API/subprocessos fictícios testam publicação idêntica como no-op e ausência de merge/tag/Release quando gates falham. A suíte anterior de FTP, Drive/OAuth, ZIP, logs, identidade e distribuição permanece obrigatória.
 
-O cenário grande cria prefixo esparso de 1,2 GiB, lê/confere seu CRC real e observa Range para remoto fictício de 2 GiB. Não baixa 2 GiB nem mede SD físico. ENOSPC, falha TLS/timeout/certificado, Range 200/206/416, mudança remota, 401, pausa/cancelamento/reinício e preservação de destinos são cobertos pela suíte, em fronteiras explicitadas em [TESTES](TESTES.md).
+## Arquivos principais
 
-## Arquivos desta rodada
+| Área | Arquivos |
+| --- | --- |
+| Núcleo/worker | include/updates/*, src/updates/update_core.cpp, update_service.cpp |
+| HTTPS/runtime | include/network/socket_runtime.h, src/network/socket_runtime.cpp, src/network/update_http.cpp |
+| Auxiliar/UI | tools/updater/updater_main.cpp, src/app/main.cpp |
+| Persistência | include/cloud/credential_store.h, src/cloud/credential_store.cpp; novo arquivo update-settings.json em pasta separada |
+| Build/pacote | VERSION, Makefile, .gitignore, scripts/prepare.py, validate_nro.py, package.py, build.sh |
+| Publicação | scripts/release_policy.py, github_distribution.py, workflows build.yml/release.yml/experimental.yml |
+| Testes | harness updater, test_updater, test_release_policy, test_distribution_controller, distribuição e ciclo de vida |
+| Documentação | README, CHANGELOG, guias técnicos, atualização/promoção, checklist 3.3, histórico e notas v0.10.13 |
 
-- Rede: `src/network/socket_runtime.cpp`, `wifi_transfer.cpp` e stub/harness de ciclo de vida.
-- Drive/UI: `src/cloud/gdrive.cpp`, `include/gdrive.h`, `src/app/main.cpp`.
-- Downloads: `src/cloud/download_manager.cpp`, `include/cloud/download_manager.h`, harness e testes Python.
-- Concorrência: `tests/host/concurrent.cpp`, `tests/test_concurrent_network.py`.
-- Versão/pacote: `VERSION`, `scripts/package.py`, notas v0.10.12; Makefile/prepare/NACP/inspeção estabilizados preservados.
-- Documentos: README, CHANGELOG, índice/roadmap, arquitetura, referência, FTP, Drive, downloads, controles, funcionalidades, testes, problemas, instalação Android, histórico, relatório e checklist.
+Logo, terceiros, Commander, FTP, Drive e dados legados preservados. O projeto separado Switch-Manager e o SD pessoal não foram alterados. O wrapper devkitPro externo ao repositório foi ajustado somente para copiar também o auxiliar gerado, sem mudar imagem ou SDK.
 
-## GitHub e validação física
+## GitHub e pendências físicas
 
-O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) permanece aberto. A execução específica e o artefato final serão ligados aqui/na descrição do PR após CI. Nenhum merge, alteração direta na main ou Release está autorizado nesta missão.
+O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) registra commits, execução Actions e artefato experimental exatos ao concluir a validação. Não foi acionado workflow de publicação, merge, tag ou Release nesta missão.
 
-O [checklist físico com Funcionou / Não funcionou](VALIDACAO_SWITCH_LITE_3_2.md) é obrigatório para avaliar a candidata. FAT32/exFAT, SSL Google real, applet/memória completa, UI/toque, rendimento/estabilidade, suspensão e queda elétrica não são aprovados por compilação ou testes de host. Não executar testes destrutivos no cartão pessoal.
+O [checklist 3.3](VALIDACAO_SWITCH_LITE_3_3.md) exige TLS GitHub real, worker/controles/toque, instalação no alvo correto, passagem para auxiliar, retorno, backup/rollback, applet/memória completa, FAT32/exFAT e regressões das funções aprovadas. Assinatura independente, retomada do download do atualizador, limpeza automática de áreas antigas e retomada de upload Drive não foram implementadas.

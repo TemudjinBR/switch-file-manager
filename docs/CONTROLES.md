@@ -48,3 +48,7 @@ No login Drive, B ou o botão Cancelar por toque encerra o diálogo local; ele n
 ## Esperas Drive — candidata 0.10.12
 
 Durante navegação/transferência remota, B solicita cancelamento e Y inicia/para o FTP; a primeira ativação pede confirmação do acesso anônimo. Fora dessa espera, Y continua marcando itens como antes. X e toque continuam Pausar/Continuar em downloads, B/toque Cancelar. DNS e E/S SD podem atrasar a resposta. Não há navegação livre dos painéis durante uma transferência Drive síncrona.
+
+## Atualizador — Missão 3.3
+
+Ações → Atualizações usa o modal existente: botões/toque para verificar, notas, baixar, instalar, recuperar anterior, alternar canal/checagem e cancelar tarefa. B sai do diálogo sem cancelar implicitamente o worker. Instalação/rollback exigem confirmação; o auxiliar mostra erro em console e B para sair. [Detalhes](ATUALIZACOES.md).

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>0.10.12 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
+  <strong>0.10.13 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
   Homebrew para Nintendo Switch desbloqueado com Atmosphère · C++17 e libnx
 </p>
 
@@ -32,7 +32,7 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 **Estado atual:** o aplicativo e esta revisão continuam experimentais. “Implementado” significa que o recurso existe no código e pode ser acionado; a validação automática, a compilação e os testes físicos são evidências distintas. Consulte a [matriz de testes](docs/TESTES.md) e o [relatório da revisão](docs/RELATORIO_VALIDACAO.md).
 
-> **Resultados fisicos da 0.10.10, relatados pelo proprietario:** acesso ao Drive, Manter conectado e desconectar/reconectar funcionaram. O novo anexo tambem aprova FTP isolado, antes e apos Drive. FTP + Drive simultaneos, identificacao da versao e recuperacao de download com queda de internet falharam. A Missao 3.1 nao esta aprovada para producao. A **0.10.12 experimental** acrescenta diagnosticos na tela, downloads recuperaveis e identidade do build; ainda exige nova validacao fisica. O relato historico **“Falha ao salvar login no cartão SD.”** permanece registrado em [Google Drive](docs/GOOGLE_DRIVE.md).
+> **Resultados fisicos da 0.10.10, relatados pelo proprietario:** acesso ao Drive, Manter conectado e desconectar/reconectar funcionaram. O novo anexo tambem aprova FTP isolado, antes e apos Drive. FTP + Drive simultaneos, identificacao da versao e recuperacao de download com queda de internet falharam. A Missao 3.1 nao esta aprovada para producao. A **0.10.13 experimental** acrescenta diagnosticos na tela, downloads recuperaveis e identidade do build; ainda exige nova validacao fisica. O relato historico **“Falha ao salvar login no cartão SD.”** permanece registrado em [Google Drive](docs/GOOGLE_DRIVE.md).
 
 ## Por que usar
 
@@ -47,9 +47,11 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 | Visão do armazenamento | Veja espaço livre, propriedades e os maiores itens da pasta. |
 | Proteções e diagnósticos | Confirmações, verificações nos fluxos suportados e logs ajudam a identificar falhas. |
 
-## Funcionalidades
+<a id="funcionalidades"></a>
 
-O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.12. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
+## Funcionalidades disponíveis
+
+O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.13. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
 
 ### 1. Interface e navegação
 
@@ -168,9 +170,35 @@ Não foram encontradas capturas autênticas do Switch File Manager no repositór
 
 A galeria está preparada para receber imagens reais conforme o [guia de capturas](docs/screenshots/README.md). Nenhum mockup, imagem gerada ou tela de outro aplicativo foi apresentado como prova de funcionamento.
 
+### 13. Atualizações — implementado, ainda experimental
+
+**Ações → Atualizações** consulta o repositório oficial em segundo plano e mostra versão instalada/disponível, canal, notas, bytes e estado. **ESTÁVEL é o padrão**; EXPERIMENTAL exige escolha explícita. A checagem ao abrir pode ser desativada. Download e instalação exigem confirmação; não há instalação silenciosa nem downgrade automático.
+
+HTTPS verifica certificados/nome/data. SHA-256 e metadados vinculam o NRO e o auxiliar ao manifesto. A instalação ocorre em **outro NRO**, após sair do aplicativo, com backup, recuperação e rollback explícito. Caminho desconhecido, diferente do oficial ou cópia incompatível bloqueiam a instalação. Esses fluxos têm testes de host e compilação; **não estão homologados no Switch Lite**. [Atualização e recuperação](docs/ATUALIZACOES.md).
+
+## Canais e downloads
+
+- **Canal estável: v0.10.7**, Release pública legada, cuja homologação não foi auditada nesta missão; não equivale a homologar as funções novas desta branch. [Releases públicas](https://github.com/TemudjinBR/switch-file-manager/releases/latest).
+- **Candidata 0.10.13 experimental:** [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) e [artefatos Actions](https://github.com/TemudjinBR/switch-file-manager/actions/workflows/build.yml). O ZIP externo inclui NRO, auxiliar, ZIP para SD, manifestos e checksums.
+- A checagem no console usa **Releases públicas com update.json**, não artefatos privados do Actions. Pré-Releases experimentais podem ser disponibilizadas pelo workflow manual; não são oferecidas como estáveis. Nesta missão não se acionou publicação ou merge.
+
+Cada número X.Y.Z é único. Uma pré-Release publicada não é convertida automaticamente em estável; outra versão e homologação são necessárias. Publicação estável exige revisão, checks, proteção da main e aprovação física do commit/binários exatos. [Processo de promoção](docs/PROMOCAO_E_RELEASES.md).
+
+## Próximas atualizações previstas
+
+| Prioridade | Item | Estado |
+| --- | --- | --- |
+| P0 | Homologar atualizador, auxiliar, retorno e rollback no Lite | Em teste; físico pendente |
+| P0 | Revalidar FTP + Drive simultâneos e retomada de downloads | Em teste; preservar casos já aprovados |
+| P1 | Primeira promoção estável após homologação e proteção da main | Planejado; bloqueado por gates |
+| P2 | Assinatura de manifestos com chave separada do GitHub | Planejado; não implementado |
+| P2 | Recuperação persistente de uploads Drive | Planejado; não implementado |
+
+Sem datas prometidas. O [roadmap](docs/ROADMAP.md) detalha prioridades e limites.
+
 ## Como instalar
 
-1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.12 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
+1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.13 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
 2. **Baixe `SwitchFileManager.nro`** e o checksum correspondente. A Release v0.10.7 oferece o NRO avulso; não pressupõe o ZIP de distribuição criado no desenvolvimento atual.
 3. **Confira o SHA-256** com uma ferramenta de confiança e coloque o NRO em `sdmc:/switch/Switch File Manager/` no microSD. Se estiver usando o ZIP de teste, extraia sua pasta `switch` na raiz do cartão.
 4. **Abra pelo Homebrew Menu** em um console desbloqueado com Atmosphère. Preserve as configurações já existentes em `switch/switch-manager`.
@@ -229,7 +257,7 @@ O uso do FTP local não exige serviço pago. Drive requer conta e projeto OAuth 
 | `third_party/` | Bibliotecas incorporadas com seus créditos e licenças. |
 | `.github/workflows/` | CI e publicação manual com critérios separados. |
 
-A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.12** e é a fonte para NACP, pacote e log inicial. A Missao 3.2 preserva diagnosticos FTP/NRO e downloads recuperaveis, amplia sessoes BSD, evita esperas bloqueantes e testa FTP + Drive sobrepostos; o logotipo e as demais funcionalidades permanecem preservados.
+A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.13** e é a fonte para NACP, pacote e log inicial. A Missao 3.2 preserva diagnosticos FTP/NRO e downloads recuperaveis, amplia sessoes BSD, evita esperas bloqueantes e testa FTP + Drive sobrepostos; o logotipo e as demais funcionalidades permanecem preservados.
 
 ```bash
 python3 tests/run.py
@@ -240,9 +268,9 @@ O script compila com devkitPro disponível ou com o ambiente em nuvem já prepar
 
 ## Limitações e próximos passos
 
-O anexo atualizado aprova FTP isolado, antes e depois do Drive; a falha relatada e no uso simultaneo FTP + Drive. A causa fisica dessa falha e da versao exibida continua em aberto. Acesso Drive, Manter conectado e desconectar/reconectar funcionaram no relato do proprietario da 0.10.10; isso nao aprova a Missao 3.1 para producao. A nova candidata requer a [matriz fisica](docs/VALIDACAO_SWITCH_LITE_3_2.md), incluindo perda de rede, pausa/retomada e identidade do NRO. Os testes automatizados estao no [relatorio](docs/RELATORIO_VALIDACAO.md).
+O anexo atualizado aprova FTP isolado, antes e depois do Drive; a falha relatada e no uso simultaneo FTP + Drive. A causa fisica dessa falha e da versao exibida continua em aberto. Acesso Drive, Manter conectado e desconectar/reconectar funcionaram no relato do proprietario da 0.10.10; isso nao aprova a Missao 3.1 para producao. A nova candidata requer a [matriz fisica](docs/VALIDACAO_SWITCH_LITE_3_2.md), incluindo perda de rede, pausa/retomada e identidade do NRO, além do [checklist de atualização](docs/VALIDACAO_SWITCH_LITE_3_3.md). Os testes automatizados estao no [relatorio](docs/RELATORIO_VALIDACAO.md).
 
-**Planejado, não disponível:** USB OTG e armazenamento externo, atualização automática, instalação de pacotes de jogos, novos provedores de nuvem e exportação de documentos Google. Não há prazo prometido. Consulte o [roadmap](docs/ROADMAP.md) e os [problemas conhecidos](docs/PROBLEMAS_CONHECIDOS.md).
+**Planejado, não disponível:** USB OTG e armazenamento externo, assinatura independente dos manifestos, instalação de pacotes de jogos, novos provedores de nuvem e exportação de documentos Google. Não há prazo prometido. Consulte o [roadmap](docs/ROADMAP.md) e os [problemas conhecidos](docs/PROBLEMAS_CONHECIDOS.md).
 
 ## Acompanhe o projeto
 

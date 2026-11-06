@@ -49,7 +49,7 @@ Instalacao da candidata anterior (0.10.11): extraia switch/Switch File Manager/S
 
 ## Instalação pelo Android
 
-A candidata atual é **0.10.12 experimental**; o pacote contém o build e o SHA-256 específicos da execução Actions. O NACP da 0.10.11 anterior também era validado: não foi comprovado por que o Homebrew Menu abriu/exibiu outra versão. Não presumir erro de instalação do proprietário.
+A candidata anterior desta seção era **0.10.12 experimental**; o pacote contém o build e o SHA-256 específicos da execução Actions. O NACP da 0.10.11 anterior também era validado: não foi comprovado por que o Homebrew Menu abriu/exibiu outra versão. Não presumir erro de instalação do proprietário.
 
 1. No navegador Android autenticado no GitHub, abrir a execução verde vinculada ao PR #1 e baixar **SwitchFileManager-validado** em Artifacts. É necessário login GitHub para baixar artefatos, sem criar/fornecer token pessoal.
 2. Extrair o ZIP de artefato. Dentro dele, extrair **SwitchFileManager-v0.10.12.zip** e ler LEIA-ME/manifesto. Evitar copiar o ZIP externo como se fosse aplicativo.
@@ -59,3 +59,9 @@ A candidata atual é **0.10.12 experimental**; o pacote contém o build e o SHA-
 6. Se divergir, usar Conferir cópias no SD (somente leitura) e registrar versão/build/caminho mostrados. O diagnóstico não exclui cópias automaticamente. Conferir SHA-256 com ferramenta Android que suporte hash, se disponível; nome do arquivo sozinho não comprova identidade.
 
 A instalação não requer computador local nem limpeza de dados. A versão incorporada/NACP/ícone e o empacotamento são conferidos automaticamente; o valor exibido pelo launcher e a cópia efetivamente aberta precisam do teste físico.
+
+## Candidata 0.10.13 e auxiliar
+
+Baixar o artefato verde do PR #1 e extrair o ZIP externo, depois **SwitchFileManager-v0.10.13.zip**. Fechar o aplicativo e copiar a pasta switch para a raiz do SD pelo Android, preservando configurações. O pacote agora inclui **SwitchFileManager.nro** e **SfmUpdateHelper.nro** no diretório oficial. O auxiliar empacotado não deve ser aberto isoladamente como se fosse o aplicativo: a atualização usa um auxiliar verificado dentro da transação específica.
+
+Conferir 0.10.13/build do manifesto e caminho em execução. Atualização pelo app precisa de Release oficial mais nova com update.json; não usar tokens pessoais para baixar artefatos Actions no Switch. A instalação automática fica bloqueada se argv[0] não for exatamente sdmc:/switch/Switch File Manager/SwitchFileManager.nro ou se o NRO nesse caminho não corresponder ao build em execução. Duplicados continuam intactos.

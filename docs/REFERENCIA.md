@@ -120,3 +120,7 @@ Diagnostico local FTP usa NIFM/gethostid e codigos por etapa; nenhuma sonda exte
 A rodada 0.10.12 parte de c78ce35 (não voltar à base d66994c descartando correções). O servidor FTP existente foi preservado; a investigação de sessões BSD/esperas e o callback UI são descritos em ARQUITETURA e FTP. Testes de simultaneidade exigem barreira no mesmo processo: testes sequenciais de posse não bastam. Downloads mantêm SFMDL2 compatível, CRC, consulta de espaço e escolha de reinício. Não prometer retomada de upload.
 
 No callback setNetworkPump, somente UI/FTP/controle de cancelamento; nunca chamar outra API Drive. Estados de autenticação pertencem à thread principal. O SDK/SSL real e o modo applet não são simulados pelos stubs. A versão do pacote é 0.10.12; instalação Android e comparação versão/build/caminho em VERSAO_E_INSTALACAO. Relatos físicos correntes em VALIDACAO_SWITCH_LITE_3_2.
+
+## Atualizador — Missão 3.3
+
+Atual: **0.10.13 experimental**, preservando 7116e34 e o PR #1. Ler [ATUALIZACOES](ATUALIZACOES.md) e [PROMOCAO_E_RELEASES](PROMOCAO_E_RELEASES.md) antes de mudar atualização/distribuição. O alvo é apenas o caminho oficial validado contra argv[0]/NACP/build. Nunca instalar pelo processo principal, baixar de Actions com token pessoal, mover tags ou promover por CI verde. main foi observada sem proteção; gate bloqueia até configuração administrativa real e homologação. Não inventar relatório físico aprovado.

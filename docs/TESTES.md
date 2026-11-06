@@ -162,3 +162,15 @@ SFM_TEST_TSAN=1 TSAN_OPTIONS=halt_on_error=1:exitcode=66 python3 -m unittest dis
 ```
 
 O sanitizer instrumenta o C++ FTP/Drive no host, não libnx/firmware. Nove cenários passaram sem relatório de corrida; isso não prova ausência de toda condição possível. Uma rodada normal encontrou a publicação tardia do diagnóstico de falha de thread (421 chegava antes do evento); a ordem foi corrigida no servidor e a suíte final repetida.
+
+## Atualizador — Missão 3.3
+
+`test_updater.py` usa C++ real, E/S temporária, SHA comparado com hashlib e HTTP loopback sem TLS: canais, versão, metadados, parcial/checksum, worker responsivo/cancelamento, falta de espaço, caminho, NRO, backup e interrupções simuladas de instalação/rollback. `test_release_policy.py` e `test_distribution_controller.py` exercitam gates e controlador com API/subprocessos fictícios, sem merge/publicação. Regressores FTP/Drive/contas continuam obrigatórios. `--nro` valida também o auxiliar e o pacote; compilação não executa next-load/TLS no Lite. [Checklist específico](VALIDACAO_SWITCH_LITE_3_3.md).
+
+ThreadSanitizer do worker/FTP e testes do auxiliar podem ser repetidos no host:
+
+```bash
+SFM_TEST_TSAN=1 TSAN_OPTIONS=halt_on_error=1:exitcode=66 python3 -m unittest discover -s tests -p test_updater.py -v
+```
+
+Isso instrumenta C++/threads de teste e não o SSL/firmware do Switch. O auxiliar é exercitado por sua biblioteca de transação em E/S temporária; envSetNextLoad e sua UI de console dependem da matriz física.

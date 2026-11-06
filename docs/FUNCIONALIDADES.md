@@ -144,3 +144,7 @@ A suíte de host testa módulos locais, logs, ZIP real, FTP em loopback e Drive 
 ## Ajustes da 0.10.12
 
 A matriz do novo anexo aprova FTP isolado/sequencial e acesso/persistência/reconexão Drive na 0.10.10; não aprova uso simultâneo nem a candidata atual. O servidor e as operações anteriores foram preservados. Durante espera de rede Drive, Y inicia/para FTP mediante aviso de acesso anônimo e B cancela. UI e Drive continuam numa thread; workers FTP não desenham. Downloads verificam espaço, preservam registros compatíveis e oferecem Preservar e voltar / Reiniciar com seguranca quando a retomada é recusada. Não foi implementada retomada de upload.
+
+## Atualizador — Missão 3.3
+
+**Atualizações...** é a nova opção de Ações, implementada e ainda experimental: consulta/download em worker, canal estável padrão, experimental explícito, preferências, notas/bytes/estado, instalação por auxiliar e rollback. Não há assinatura independente, retomada desse download ou homologação física. [Contrato](ATUALIZACOES.md).

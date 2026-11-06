@@ -92,3 +92,7 @@ FTP mantém listener e até quatro threads clientes; Drive e desenho permanecem 
 A posse do runtime continua protegida por mutex e idempotente por serviço. O orçamento é oito sessões BSD, fallback para três somente em erros explícitos de recursos. Esperas FTP/TCP usam sockets não bloqueantes e select instantâneo; a espera de 10 ms ocorre fora da sessão IPC. O worker é dono do fechamento de seu socket; não há shutdown concorrente na UI sobre descritores reutilizáveis. SSL usa WouldBlock/timeout já verificados sem ignorar certificado.
 
 Isso não transforma Drive numa API multithread: estados JSON/OAuth/diagnóstico permanecem restritos à thread chamadora. Não chamar netInit/netExit/API Drive de outro worker. A UI pode solicitar cancelamento, mas DNS síncrono, latência de disco e serviços do console ainda podem atrasar sua resposta. Não se implementou navegação livre nos dois painéis durante uma transferência remota.
+
+## Atualizador — Missão 3.3
+
+`src/updates/update_core.cpp` concentra parser/manifesto, SHA-256 incremental e transação; `update_service.cpp` coordena preferências/worker; `network/update_http.cpp` oferece HTTPS separado do OAuth. Cada chamada mantém posse Updates no runtime e contexto SSL próprio; não chama gdrive nem desenha. A UI lê snapshots protegidos por mutex. `tools/updater/updater_main.cpp` é outro NRO, com o mesmo build, que instala após o principal sair. Makefile gera os dois executáveis em diretórios separados e inclui o auxiliar na identidade dos fontes. [Transação e confiança](ATUALIZACOES.md).

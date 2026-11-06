@@ -1,5 +1,14 @@
 # Histórico de alterações
 
+## 0.10.13 — experimental, Missão 3.3 (06/11/2026)
+
+- Atualizações com canal estável padrão, experimental explícito, consulta em worker, preferências, notas, tamanho/progresso e confirmação de download/instalação.
+- Manifesto público oficial por HTTPS, SHA-256 incremental, validação NRO/NACP/build e caminho oficial; nenhum token pessoal embutido.
+- Auxiliar separado instala após encerrar o principal, com parcial exclusivo, backup, journal, recuperação e rollback; falhas não autorizam sobrescrever dados desconhecidos.
+- Terceira posse de sockets para o atualizador, sem encerrar donos FTP/Drive.
+- Workflows manuais de pré-Release e promoção: revisão, proteção real, CI e homologação com commit/hashes exatos; sem publicação automática por CI verde ou reutilização de versão/canal.
+- Pacote com dois NROs, notas e checksums; testes de falhas/transação/canais e documentação de confiança/limites. Nenhuma homologação física, merge ou Release nesta missão.
+
 ## 0.10.12 — experimental, simultaneidade e recuperação (06/11/2026)
 
 - Matriz física corrigida pelo novo anexo: FTP isolado/antes/depois do Drive aprovados; simultaneidade, retomada e versão exibida reprovadas na 0.10.10. Preservado o trabalho posterior de c78ce35/0.10.11.
