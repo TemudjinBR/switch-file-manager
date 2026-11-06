@@ -20,7 +20,7 @@ O inventário de menus foi consolidado na **0.10.8 experimental**, revisão `973
 | Fila — implementado | `QueuedTransfer`, `enqueueTransfer`, `runTransferQueue`, `transferQueueMenu`, `QUEUE_LIMIT`. Até 20 tarefas, somente SD, copiar/mover, listar/executar/limpar e progresso. Em memória, sem persistência e sem transação de toda a tarefa. |
 | Google Drive — experimental | [gdrive.cpp](../src/cloud/gdrive.cpp): `loadCreds`, `tokenRequest`, `refreshToken`, `loginServerStart/Poll/Stop`, `listFolder`, `downloadFile`, `uploadFile`, `createFolder`, `renameItem`, `trashItem`, `logout`; main: `ensureDriveLogin`, `driveLoad`, `scanDriveTree`, `dlTree`, `ulTree`, `toggleDrive`, `cloudMenu`, `logoutAll`. Conta individual, OAuth manual, navegação/paginação, árvores SD↔Drive, pastas/nomes/lixeira, renovação e desconexão. Falha física relatada na 0.10.8; a 0.10.10 mantém a correção candidata e amplia os diagnósticos, ainda sem aprovação no hardware. Persistência isolada em [credential_store.cpp](../src/cloud/credential_store.cpp). |
 | FTP — implementado | [wifi_transfer.cpp](../src/network/wifi_transfer.cpp): `start`, `serve`, `session`, transferências e contadores; main: `wifiMenu`, `modal`, `drawMain`. Porta 2121, quatro clientes no código, leitura/escrita anônima, ativo/passivo, REST de download, eventos e refresh local. |
-| ZIP — implementado | [zipx.cpp](../src/archives/zipx.cpp): `inspect`, `compress`, `extract`; main: `zipMenu`, `showZipInfo`, `doCompressZip`, `doExtractZip`. Seleção local, modos rápido/sem compressão, destino atual/oposto, estatísticas, senha detectada/itens ignorados, CRC e cancelamento. |
+| ZIP — implementado | [zipx.cpp](../src/archives/zipx.cpp): `inspect`, `compress`, `extract`; main: `extractSelectedZips`, `showZipInfo`, `doCompressZip`, `doExtractZip`. Seleção local, modos rápido/sem compressão, destino atual/oposto, estatísticas, senha detectada/itens ignorados, CRC e cancelamento. |
 | Armazenamento/propriedades — implementado | `refreshSpace`, `propsText`, `doProperties`, `calcTree`, `doSpaceAnalyzer` em main. Total/livre/utilização SD, propriedades individuais e agregadas, arquivos/pastas, data quando disponível, até nove maiores itens imediatos. Totais podem ser incompletos; profundidade limitada no cálculo de propriedades. |
 | Homebrew NRO — implementado | `endsWithNro`, `openCur`, `launchNro`, `envHasNextLoad`, `envSetNextLoad`. Extensão NRO local, confirmação e saída para o programa quando suportado. Outros arquivos mostram informações, sem visualizador universal ou instalador de jogos. |
 | Proteções — implementado | [path_policy.cpp](../src/security/path_policy.cpp), `doCopyMove`, `doDelete`, [operations.cpp](../src/storage/operations.cpp), verificações do FTP/ZIP. Confirmações, nomes/caminhos, destinos exclusivos nos fluxos protegidos, conferência do fallback e erros explícitos; não há garantia absoluta ou transação global. |
@@ -28,9 +28,27 @@ O inventário de menus foi consolidado na **0.10.8 experimental**, revisão `973
 
 As funções da aplicação mencionadas estão em [src/app/main.cpp](../src/app/main.cpp). Os guias de [controles](CONTROLES.md), [armazenamento](ARMAZENAMENTO.md), [Drive](GOOGLE_DRIVE.md), [FTP](FTP.md) e [ZIP](ZIP.md) detalham o comportamento e suas restrições.
 
-## Mapa de todos os menus principais
+## Menu contextual — patch sobre 0.10.13
 
-Os rótulos abaixo são os textos presentes na revisão inventariada, conservados para evitar omitir ferramentas ao escrever a apresentação.
+A interface candidata agora diferencia quatro categorias gerais (sem seleção)
+das operações diretas sobre arquivos/pastas. O submenu Ferramentas foi
+eliminado. Compactar e Extrair são comandos contextuais específicos. A
+lista completa e o teste físico recomendado estão em
+[MENU_CONTEXTUAL.md](MENU_CONTEXTUAL.md).
+
+**Sem seleção:** Arquivos e pastas → Transferências → Organização → Sistema.
+
+**Com item:** Copiar → Mover → Selecionar tudo → Excluir → Renomear →
+Compactar em ZIP **ou** Extrair ZIP, conforme tipo e local. Seleção de
+vários itens troca Selecionar tudo por Desmarcar tudo e remove Renomear.
+
+**Transição:** as filas local/FTP/Drive permanecem independentes,
+portanto o submenu Transferências é somente um centro de acesso/resumo,
+não uma fila de execução tecnicamente unificada.
+
+## Mapa histórico dos menus anteriores à reorganização
+
+Os rótulos abaixo são históricos (pré-patch), mantidos apenas para rastrear recursos antigos. **Não descrevem a interface nova.**
 
 ### Ações
 
