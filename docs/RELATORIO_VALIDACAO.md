@@ -28,32 +28,32 @@ A proteção **não foi configurada**: o workflow recusa promover nessa condiç�
 | Verificação final local | Resultado |
 | --- | --- |
 | Suíte sem NRO | 192 casos: 189 aprovados, três dependentes de binário ignorados; zero falhas; 112,150 s |
-| Suíte com NRO/auxiliar reais | **192/192 aprovados**, zero falhas/ignorados; 113,949 s |
+| Suíte com NRO/auxiliar reais | **193/193 aprovados**, zero falhas/ignorados; 112,141 s |
 | Atualizador | 25 casos: canais/versões/origem, API/rate limit, chunked/parcial/checksum, corrupção, caminhos, transação/rollback/crashes e FTP real com download pendente |
 | ThreadSanitizer | **25 cenários aprovados**, sem relatório de corrida no C++ host; 30,690 s |
-| Política/controlador | Oito casos de gates e cinco de controlador; API/processos fictícios, sem publicação ou merge reais |
+| Política/controlador | Oito casos de gates e seis de controlador; API/processos fictícios, sem publicação ou merge reais |
 | Rede/autenticação anterior | Regressões mantidas, incluindo 51 cenários de rede/contas, nove de simultaneidade FTP/Drive e dez de ciclo de vida com terceiro dono Updates |
 | Compilação real | devkitA64 r29.2-1/libnx 4.12.0-1, wrapper configurado, mesma imagem fixada por digest da 3.2 |
 | Principal | **1.033.944 bytes**, NACP 0.10.13, título Switch File Manager |
 | Auxiliar | **386.776 bytes**, NACP 0.10.13, título Atualizador do Switch File Manager |
-| Build dos dois NROs | **v0.10.13-d0c05964fc04**, correspondente aos fontes |
+| Build dos dois NROs | **v0.10.13-cc76cad73843**, correspondente aos fontes |
 | Distribuição | NROs, ZIP para SD, manifestos e sidecars verificados; ícone oficial comparado byte a byte nos dois NROs |
 | Documentação/workflows | 34 documentos com links/âncoras/imagens válidos; Markdownlint em 17 alterados e actionlint aprovados |
 | Git | diff --check aprovado; build não reescreve fontes; artefatos ignorados pelo versionamento |
 
-A execução final foi `bash scripts/build.sh`: suíte host, compilação real dos dois NROs, validadores NRO/NACP/build, suíte com binários e empacotamento. O SHA do ícone oficial continua 858ebcb92444859e77ba2485a9532bedda25254ddc00d3fca72517eb5ff38cca. Warnings restantes são funções estáticas não utilizadas do stb_truetype e a nota de arquivos grandes do miniz; o aviso do compilador sobre std::sort em array pequeno foi eliminado por verificação direta dos três pares de assets.
+A execução final foi `bash scripts/build.sh`: suíte host, compilação real dos dois NROs, validadores NRO/NACP/build, suíte com binários e empacotamento. Após o ajuste da entrada manual registrada e seu novo teste de controlador, os dois NROs foram recompilados e a suíte completa repetida: 193/193 aprovados. O SHA do ícone oficial continua 858ebcb92444859e77ba2485a9532bedda25254ddc00d3fca72517eb5ff38cca. Warnings restantes são funções estáticas não utilizadas do stb_truetype e a nota de arquivos grandes do miniz; o aviso do compilador sobre std::sort em array pequeno foi eliminado por verificação direta dos três pares de assets.
 
 Hashes **locais** (usar os sidecars do artefato remoto específico ao baixar):
 
 ```text
 SwitchFileManager.nro
-786f1d007479305a6fec93ceeb617a8824545a5d486c527b0f442d58caf03bbe
+fc00935b8171d306d4cd07af947e0addbe95d63abfcdfdf8861b54693fdbdd85
 
 SfmUpdateHelper.nro
-db7da0fbbeeb3e19deb9026aedc1896c0f3d76eea6f91f5aa47bb1b05703b521
+0149f99bb56c7e34a002271d85c4353902afb5c205f6492b788972cba9654284
 
 dist/SwitchFileManager-v0.10.13.zip
-c17e2a4e1ab4bc9352c122d01834da4d69cee64651ad56b05b989f766992aacf
+874d4cc7c05b8fc279b48d878f4b0ee16c2e55d709acf63ff30491af56a857d0
 
 ```
 
@@ -70,7 +70,7 @@ Os novos testes usam SHA comparado com hashlib, parser/manifestos e E/S reais te
 | Auxiliar/UI | tools/updater/updater_main.cpp, src/app/main.cpp |
 | Persistência | include/cloud/credential_store.h, src/cloud/credential_store.cpp; novo arquivo update-settings.json em pasta separada |
 | Build/pacote | VERSION, Makefile, .gitignore, scripts/prepare.py, validate_nro.py, package.py, build.sh |
-| Publicação | scripts/release_policy.py, github_distribution.py, workflows build.yml/release.yml/experimental.yml |
+| Publicação | scripts/release_policy.py, github_distribution.py, workflows build.yml/release.yml/experimental.yml/validate.yml e scripts/ci_build.sh |
 | Testes | harness updater, test_updater, test_release_policy, test_distribution_controller, distribuição e ciclo de vida |
 | Documentação | README, CHANGELOG, guias técnicos, atualização/promoção, checklist 3.3, histórico e notas v0.10.13 |
 
@@ -81,3 +81,9 @@ Logo, terceiros, Commander, FTP, Drive e dados legados preservados. O projeto se
 O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) registra commits, execução Actions e artefato experimental exatos ao concluir a validação. Não foi acionado workflow de publicação, merge, tag ou Release nesta missão.
 
 O [checklist 3.3](VALIDACAO_SWITCH_LITE_3_3.md) exige TLS GitHub real, worker/controles/toque, instalação no alvo correto, passagem para auxiliar, retorno, backup/rollback, applet/memória completa, FAT32/exFAT e regressões das funções aprovadas. Assinatura independente, retomada do download do atualizador, limpeza automática de áreas antigas e retomada de upload Drive não foram implementadas.
+
+## Entrada manual antes do primeiro merge
+
+A API confirmou que somente build.yml existe na main original. Segundo a regra do GitHub, workflow_dispatch exige arquivo registrado na branch padrão. Por isso o workflow **Compilar e testar Switch File Manager** também expõe entradas manuais na branch do PR: publish_experimental (padrão falso) e promote_stable (padrão falso, chama o controlador reutilizável com os mesmos gates). Selecionar a branch codex/reorganizacao-estabilizacao e o SHA correspondente; informar PR/comentário para promoção. A opção estável tem prioridade se ambas forem marcadas. Consultas normais do PR continuam somente testando/compilando, sem publicar.
+
+Isso prepara a primeira entrada sem adicionar arquivos à main antecipadamente. release.yml usa validate.yml para a compilação interna; não chama build.yml de volta, evitando um ciclo de workflows. Ambos os caminhos de compilação executam scripts/ci_build.sh. Publicações usam a mesma exclusão mútua sfm-distribuicao. Os disparos reais de publicação não foram executados: proteção/homologação continuam ausentes e bloqueiam estável. [Regra workflow_dispatch](https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#workflow_dispatch).

@@ -133,3 +133,84 @@ class DistributionControllerTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 controller.publish(api, self.sha, "experimental")
             run.assert_not_called()
+
+    def test_promotion_does_not_count_its_own_in_progress_run_as_validation(self):
+        sha = self.sha
+        version = self.version
+        record = {
+            "commit": sha,
+            "version": version,
+            "nro_sha256": "b" * 64,
+            "helper_sha256": "c" * 64,
+            "reviewed": True,
+            "physical": True,
+            "authorize_merge_release": True,
+        }
+
+        class API:
+            def call(inner, path, **kwargs):
+                if path == "pulls/1":
+                    return {
+                        "state": "open",
+                        "merged": False,
+                        "draft": False,
+                        "head": {
+                            "sha": sha,
+                            "repo": {"full_name": "TemudjinBR/switch-file-manager"},
+                        },
+                        "base": {"ref": "main"},
+                    }
+                if path == "branches/main":
+                    return {
+                        "protected": True,
+                        "protection": {
+                            "required_status_checks": {
+                                "enforcement_level": "everyone",
+                                "contexts": ["tests", "build"],
+                            }
+                        },
+                    }
+                if path == "issues/comments/999":
+                    return {
+                        "user": {"login": "TemudjinBR"},
+                        "issue_url": "https://api.github.com/repos/TemudjinBR/switch-file-manager/issues/1",
+                        "body": "HOMOLOGACAO_SFM_1\n" + json.dumps(record),
+                    }
+                if path.startswith("actions/runs?"):
+                    return {
+                        "workflow_runs": [
+                            {
+                                "id": 8,
+                                "head_sha": sha,
+                                "name": "Compilar e testar Switch File Manager",
+                                "conclusion": "success",
+                            },
+                            {
+                                "id": 9,
+                                "head_sha": sha,
+                                "name": "Compilar e testar Switch File Manager",
+                                "conclusion": None,
+                            },
+                        ]
+                    }
+                return None
+
+        report = (
+            "Resultado: APROVADO\nDispositivo: Nintendo Switch Lite\nAtmosphere: fixture\nFormato SD: fixture\n"
+            + "b" * 64
+            + "\n"
+            + "c" * 64
+        )
+
+        def git(*args):
+            path = args[-1]
+            if path.endswith(":VERSION"):
+                return version
+            if "validacao-console" in path:
+                return report
+            return "Canal estável: v" + version
+
+        with patch.object(controller, "git", side_effect=git), patch.dict(
+            os.environ, {"GITHUB_RUN_ID": "9"}
+        ):
+            self.assertEqual(controller.criteria(API(), 1, sha, 999), record)

@@ -1,0 +1,56 @@
+name: Validar candidata imutável
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+      channel:
+        type: string
+        default: experimental
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Testes automatizados no host
+        run: python3 tests/run.py
+
+  build:
+    needs: tests
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validar contexto Git do contêiner
+        shell: bash
+        run: |
+          set -euo pipefail
+          # checkout usa HOME temporário: a confiança deve existir também neste shell.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" rev-parse --show-toplevel
+          git -C "$GITHUB_WORKSPACE" rev-parse HEAD
+      - name: Compilar, validar e empacotar
+        env:
+          SFM_CHANNEL: ${{ inputs.channel || 'experimental' }}
+        shell: bash
+        run: bash scripts/ci_build.sh
+      - name: Disponibilizar distribuição de teste
+        uses: actions/upload-artifact@v4
+        with:
+          name: SwitchFileManager-validado
+          path: dist/*
+          if-no-files-found: error
+

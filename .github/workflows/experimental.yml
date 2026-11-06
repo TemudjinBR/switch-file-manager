@@ -18,7 +18,7 @@ concurrency:
 jobs:
   validated:
     if: github.actor == github.repository_owner
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/validate.yml
     with:
       ref: ${{ inputs.candidate_sha }}
       channel: experimental

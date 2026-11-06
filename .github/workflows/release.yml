@@ -1,6 +1,17 @@
 name: Promover versão homologada
 
 on:
+  workflow_call:
+    inputs:
+      candidate_sha:
+        required: true
+        type: string
+      pr_number:
+        required: true
+        type: string
+      approval_comment:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       candidate_sha:
@@ -47,7 +58,7 @@ jobs:
         run: python3 scripts/github_distribution.py criteria --sha "$CANDIDATE_SHA" --pr "$PR_NUMBER" --approval-comment "$APPROVAL_COMMENT"
   validated:
     needs: criteria
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/validate.yml
     with:
       ref: ${{ inputs.candidate_sha }}
       channel: stable

@@ -62,6 +62,10 @@ def criteria(api, pr_number, sha, comment_id):
     version = git("show", sha + ":VERSION")
     require(bool(re.fullmatch(r"\d+\.\d+\.\d+", version)), "VERSION inválido")
     runs = api.call("actions/runs?head_sha=" + sha + "&per_page=100")["workflow_runs"]
+    # A entrada manual em build.yml e o controlador, nao uma validacao concluida.
+    # Excluir somente esta execucao; outros checks em curso/falhos continuam bloqueando.
+    current_run = os.environ.get("GITHUB_RUN_ID", "")
+    runs = [run for run in runs if str(run.get("id")) != current_run]
     report = git("show", sha + f":docs/validacao-console/v{version}.md")
     approval = promotion_gate(
         pr, branch, runs, comment, report, "TemudjinBR", sha, version
