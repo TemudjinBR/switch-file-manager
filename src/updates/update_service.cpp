@@ -265,7 +265,7 @@ void Service::work(bool download) {
             };
             {
                 std::lock_guard<std::mutex> guard(mutex);
-                current.state = "Baixando; B no menu solicita cancelamento";
+                current.state = "Baixando; use Cancelar tarefa";
                 current.total = transaction.manifest.app.size + transaction.manifest.helper.size;
             }
             if (fetchFile(transaction.manifest.app, "new.nro") &&

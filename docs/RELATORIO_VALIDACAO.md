@@ -28,7 +28,7 @@ A proteção **não foi configurada**: o workflow recusa promover nessa condiç�
 | Verificação final local | Resultado |
 | --- | --- |
 | Suíte sem NRO | 192 casos: 189 aprovados, três dependentes de binário ignorados; zero falhas; 112,150 s |
-| Suíte com NRO/auxiliar reais | **193/193 aprovados**, zero falhas/ignorados; 112,141 s |
+| Suíte com NRO/auxiliar reais | **193/193 aprovados**, zero falhas/ignorados; 116,475 s |
 | Atualizador | 25 casos: canais/versões/origem, API/rate limit, chunked/parcial/checksum, corrupção, caminhos, transação/rollback/crashes e FTP real com download pendente |
 | ThreadSanitizer | **25 cenários aprovados**, sem relatório de corrida no C++ host; 30,690 s |
 | Política/controlador | Oito casos de gates e seis de controlador; API/processos fictícios, sem publicação ou merge reais |
@@ -36,7 +36,7 @@ A proteção **não foi configurada**: o workflow recusa promover nessa condiç�
 | Compilação real | devkitA64 r29.2-1/libnx 4.12.0-1, wrapper configurado, mesma imagem fixada por digest da 3.2 |
 | Principal | **1.033.944 bytes**, NACP 0.10.13, título Switch File Manager |
 | Auxiliar | **386.776 bytes**, NACP 0.10.13, título Atualizador do Switch File Manager |
-| Build dos dois NROs | **v0.10.13-cc76cad73843**, correspondente aos fontes |
+| Build dos dois NROs | **v0.10.13-94550ed73efa**, correspondente aos fontes |
 | Distribuição | NROs, ZIP para SD, manifestos e sidecars verificados; ícone oficial comparado byte a byte nos dois NROs |
 | Documentação/workflows | 34 documentos com links/âncoras/imagens válidos; Markdownlint em 17 alterados e actionlint aprovados |
 | Git | diff --check aprovado; build não reescreve fontes; artefatos ignorados pelo versionamento |
@@ -47,13 +47,13 @@ Hashes **locais** (usar os sidecars do artefato remoto específico ao baixar):
 
 ```text
 SwitchFileManager.nro
-fc00935b8171d306d4cd07af947e0addbe95d63abfcdfdf8861b54693fdbdd85
+018e762895375d6fa61bca508613af54c4a8beb0b33d025afb6c7466f483639a
 
 SfmUpdateHelper.nro
-0149f99bb56c7e34a002271d85c4353902afb5c205f6492b788972cba9654284
+947aa9a0e918194eab7b9a81884915ccec486554d5ee230dd457431b593a87ba
 
 dist/SwitchFileManager-v0.10.13.zip
-874d4cc7c05b8fc279b48d878f4b0ee16c2e55d709acf63ff30491af56a857d0
+04331e026f3c526a7bced1334d329d5106afeb7c4ed31652886514d4754f3be7
 
 ```
 
@@ -87,3 +87,5 @@ O [checklist 3.3](VALIDACAO_SWITCH_LITE_3_3.md) exige TLS GitHub real, worker/co
 A API confirmou que somente build.yml existe na main original. Segundo a regra do GitHub, workflow_dispatch exige arquivo registrado na branch padrão. Por isso o workflow **Compilar e testar Switch File Manager** também expõe entradas manuais na branch do PR: publish_experimental (padrão falso) e promote_stable (padrão falso, chama o controlador reutilizável com os mesmos gates). Selecionar a branch codex/reorganizacao-estabilizacao e o SHA correspondente; informar PR/comentário para promoção. A opção estável tem prioridade se ambas forem marcadas. Consultas normais do PR continuam somente testando/compilando, sem publicar.
 
 Isso prepara a primeira entrada sem adicionar arquivos à main antecipadamente. release.yml usa validate.yml para a compilação interna; não chama build.yml de volta, evitando um ciclo de workflows. Ambos os caminhos de compilação executam scripts/ci_build.sh. Publicações usam a mesma exclusão mútua sfm-distribuicao. Os disparos reais de publicação não foram executados: proteção/homologação continuam ausentes e bloqueiam estável. [Regra workflow_dispatch](https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#workflow_dispatch).
+
+A mensagem de download orienta usar Cancelar tarefa; B apenas sai do diálogo mantendo o worker, conforme o contrato. Após esse ajuste de texto, os NROs foram recompilados e os 193 testes repetidos com sucesso.
