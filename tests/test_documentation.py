@@ -54,18 +54,38 @@ class DocumentationTests(unittest.TestCase):
     def test_menu_inventory_covers_implemented_options(self):
         code = (ROOT / 'src/app/main.cpp').read_text()
         inventory = (ROOT / 'docs/FUNCIONALIDADES.md').read_text()
-        for function, variable in [('actionsMenu', 'o'), ('selectionMenu', 'opts'),
-                                   ('sortMenu', 'o'), ('transferQueueMenu', 'options'),
-                                   ('zipMenu', 'opts')]:
-            start = code.index('static void ' + function + '(')
-            body = code[start:]
-            initializer = re.search(r'const std::vector<std::string>\s+' + variable + r'\s*=\s*\{(.*?)\};', body, re.S)
-            if initializer is None:
-                initializer = re.search(r'std::vector<std::string>\s+' + variable + r'\s*=\s*\{(.*?)\};', body, re.S)
+        context = (ROOT / 'docs/MENU_CONTEXTUAL.md').read_text()
+
+        # Novo menu: categorias somente sem seleção; ações em função do contexto.
+        self.assertIn('contextualCommands(state)', code)
+        self.assertIn('static void actionsMenu()', code)
+        block = code[code.index('static void actionsMenu()'):]
+        initializer = re.search(r'const std::vector<std::string>\\s+sections\\s*=\\s*\\{(.*?)\\};', block, re.S)
+        self.assertIsNotNone(initializer)
+        categories = re.findall(r'"([^"\\\\]+)"', initializer[1])
+        self.assertEqual(categories, ['Arquivos e pastas', 'Transferências', 'Organização', 'Sistema'])
+        self.assertNotIn('Ferramentas', categories)
+        for category in categories:
+            self.assertIn(category, context)
+
+        # As funcionalidades antigas não foram excluídas; atalhos avançados
+        # permanecem acessíveis, com as opções documentadas.
+        for function, variable in [('selectionMenu', 'opts'),
+                                   ('sortMenu', 'o'), ('transferQueueMenu', 'options')]:
+            block = code[code.index('static void ' + function + '('):]
+            initializer = re.search(
+                r'(?:const )?std::vector<std::string>\\s+' + variable + r'\\s*=\\s*\\{(.*?)\\};',
+                block, re.S)
             self.assertIsNotNone(initializer, function)
-            for option in re.findall(r'"([^"\\]+)"', initializer[1]):
+            for option in re.findall(r'"([^"\\\\]+)"', initializer[1]):
                 with self.subTest(function=function, option=option):
                     self.assertIn(option, inventory)
+
+        # ZIP saiu do menu geral; continua disponível como operação contextual.
+        self.assertNotIn('static void zipMenu()', code)
+        for option in ('Compactar em ZIP', 'Extrair ZIP'):
+            self.assertIn(option, code)
+            self.assertIn(option, context)
 
     def test_physical_drive_failure_stays_documented(self):
         message = 'Falha ao salvar login no cartão SD.'
