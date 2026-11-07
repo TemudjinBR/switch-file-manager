@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>0.10.13 experimental no PR #1</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
+  <strong>0.10.14 experimental — Missão 3.6</strong> · Release pública: <a href="https://github.com/TemudjinBR/switch-file-manager/releases/tag/v0.10.7">v0.10.7</a><br>
   Homebrew para Nintendo Switch desbloqueado com Atmosphère · C++17 e libnx
 </p>
 
@@ -19,7 +19,8 @@
   <a href="#funcionalidades">Funcionalidades</a> ·
   <a href="#como-instalar">Instalação</a> ·
   <a href="docs/README.md">Documentação</a> ·
-  <a href="https://github.com/TemudjinBR/switch-file-manager/pull/1">Desenvolvimento</a>
+  <a href="https://github.com/TemudjinBR/switch-file-manager/pull/3">Candidata (PR #3)</a> ·
+  <a href="https://github.com/TemudjinBR/switch-file-manager/pull/1">Base (PR #1)</a>
 </p>
 
 ---
@@ -34,17 +35,17 @@ Além das operações no microSD, reúne seleção em lote, busca, favoritos, hi
 
 > **Resultados fisicos da 0.10.10, relatados pelo proprietario:** acesso ao Drive, Manter conectado e desconectar/reconectar funcionaram. O novo anexo tambem aprova FTP isolado, antes e apos Drive. FTP + Drive simultaneos, identificacao da versao e recuperacao de download com queda de internet falharam. A Missao 3.1 nao esta aprovada para producao. A **0.10.13 experimental** acrescenta diagnosticos na tela, downloads recuperaveis e identidade do build; ainda exige nova validacao fisica. O relato historico **“Falha ao salvar login no cartão SD.”** permanece registrado em [Google Drive](docs/GOOGLE_DRIVE.md).
 
-## Menu de ações contextual — candidato experimental
+## Menu global e ações contextuais — 0.10.14 experimental
 
-O botão **X** mostra somente as ações relevantes ao painel ativo. Ao abrir o programa ou entrar numa pasta, **sem foco escolhido nem marcações**, aparecem apenas **Arquivos e pastas**, **Transferências**, **Organização** e **Sistema**. **Ferramentas** deixa de ser uma categoria principal.
+**+ Menu** abre sempre as cinco categorias: **Arquivos e pastas**, **Transferências**, **Organização**, **Sistema** e **Sobre**, em qualquer painel, com ou sem seleção.
 
-Ao selecionar um arquivo/pasta com o controle, toque ou Y, aparecem diretamente **Copiar**, **Mover**, **Selecionar tudo**, **Excluir**, **Renomear** e **Compactar em ZIP**. Para arquivos **.zip** do microSD, a última opção é **Extrair ZIP**. Com vários itens marcados, **Desmarcar tudo** substitui Selecionar tudo; **Renomear** deixa de aparecer; com vários ZIPs, **Extrair ZIPs** processa cada um em sua pasta. No Drive, compactar e extrair localmente ficam ocultos.
+**X Ações** oferece somente comandos aplicáveis ao item ou à marcação. Sem foco escolhido nem marcações, exibe “Selecione um arquivo ou pasta”. Arquivo/pasta local: Copiar, Mover, Selecionar tudo, Excluir, Renomear e Compactar em ZIP; um ZIP oferece Extrair ZIP. Vários marcados trocam Selecionar tudo por Desmarcar tudo e não oferecem Renomear. No Drive não se oferecem Mover nem ZIP local.
 
-A marcação avançada (somente arquivos/pastas, inverter, limpar) continua pelo atalho **ZL + Y**; propriedades detalhadas pelo **ZL + X**. **B** volta à pasta superior. A seleção por Y permanece independente da posição do cursor.
+**− Sair** pede confirmação e aguarda o encerramento seguro. **ZL + Y** mantém seleção avançada e **ZL + X**, propriedades. **A/B/Y/L/R** e toque permanecem. Para alternar SD/Drive: **+ Menu → Arquivos e pastas → Alternar microSD / Google Drive neste painel**. A conta também está em Transferências.
 
-Em **Sistema → Sobre** estão a descrição, o autor, a versão real e, somente mais abaixo, a contribuição voluntária. Não há anúncio de Pix na lista Sistema.
+**Sobre** é a quinta categoria da raiz: arte oficial em 256×256 RGB, descrição, autoria, versão/build reais, canal de atualizações e repositório; abaixo, apoio voluntário com o QR Pix original. **Sistema** contém apenas Atualizações e Versão e diagnósticos.
 
-**Estado:** alteração proposta na branch de desenvolvimento experimental; a interface necessita compilação/CI e validação no Switch Lite antes de ser declarada estável. A categoria Transferências agrega os acessos aos mecanismos existentes, **mas a fila local, o FTP e o Drive ainda não compartilham um único motor de tarefas**.
+A base é o [PR #2](https://github.com/TemudjinBR/switch-file-manager/pull/2), preservando o [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1). A candidata **não está homologada no Switch Lite**. [Mapa e checklist físico](docs/MENU_CONTEXTUAL.md) · [Relatório 3.6](docs/MISSAO_3_6.md). As filas local, FTP e Drive continuam independentes.
 
 ## Por que usar
 
@@ -63,14 +64,14 @@ Em **Sistema → Sobre** estão a descrição, o autor, a versão real e, soment
 
 ## Funcionalidades disponíveis
 
-O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.13. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
+O catálogo abaixo cobre os menus, submenus e módulos da revisão 0.10.14. Todas as categorias estão **implementadas**; Google Drive permanece **experimental**, com a falha conhecida acima. A [referência de funcionalidades](docs/FUNCIONALIDADES.md) relaciona cada categoria ao código e detalha limites de sessão, persistência e validação.
 
 ### 1. Interface e navegação
 
 - **Dois painéis independentes:** abra pastas diferentes no SD ou use um painel local e outro do Drive. O painel ativo recebe as ações e o outro fornece o destino nas transferências compatíveis.
 - **Controles físicos e toque:** alterne o painel, abra itens, suba diretórios, navegue por páginas e role as listas. As pastas aparecem antes dos arquivos.
 - **Informações na listagem:** nome, tipo visual, tamanho de arquivos, caminho e ordem atual. A data local aparece quando a ordenação por data está selecionada; documentos nativos do Drive recebem indicação própria.
-- **Atualização das listagens:** comando manual em **X → Organização → Atualizar painéis**, após operações e ao detectar alterações concluídas pelo FTP. Atualizar a lista limpa as marcações.
+- **Atualização das listagens:** comando manual em **+ Menu → Organização → Atualizar painéis**, após operações e ao detectar alterações concluídas pelo FTP. Atualizar a lista limpa as marcações.
 
 ### 2. Arquivos e pastas
 
@@ -103,7 +104,7 @@ Favoritos e histórico são salvos no cartão. Ordenação, inversão, filtro e 
 
 ### 5. Fila de transferências locais
 
-Em **X → Transferências → Fila local de cópias e movimentos**, é possível **adicionar cópias**, **adicionar movimentações**, **ver tarefas pendentes**, **executar a fila** e **limpar as tarefas** sem apagar arquivos.
+Em **+ Menu → Transferências → Fila local de cópias e movimentos**, é possível **adicionar cópias**, **adicionar movimentações**, **ver tarefas pendentes**, **executar a fila** e **limpar as tarefas** sem apagar arquivos.
 
 A fila aceita **até 20 tarefas**, cada uma podendo conter vários itens, somente entre pastas do SD. Adicionar uma tarefa ainda não transfere os arquivos. A execução acompanha o progresso e, em falha ou cancelamento, mantém a tarefa interrompida e as seguintes para revisão. **A fila não persiste após encerrar o aplicativo e não aceita Google Drive.** Uma tarefa parcialmente executada não é desfeita automaticamente.
 
@@ -124,7 +125,7 @@ A correção de persistência da Missão 3 continua preservada na 0.10.12: o log
 
 ### 7. FTP e transferência Wi-Fi
 
-- **Servidor FTP integrado na porta 2121**, iniciado e encerrado em **X → Transferências → Servidor FTP (Wi-Fi)**. O aplicativo mostra o endereço exato para conectar pelo cliente FTP.
+- **Servidor FTP integrado na porta 2121**, iniciado e encerrado em **+ Menu → Transferências → Servidor FTP (Wi-Fi)**. O aplicativo mostra o endereço exato para conectar pelo cliente FTP.
 - **Upload e download de arquivos**, listagem de diretórios, navegação, criação e remoção de pastas vazias, exclusão de arquivos, renomeação e consulta de tamanho/data.
 - **Modos passivo e ativo**, listagens LIST/NLST/MLSD/MLST e **retomada de download com REST**. A retomada de upload é recusada.
 - **Estado do servidor:** clientes conectados, arquivos concluídos, total transferido e última atividade. O cabeçalho também informa clientes, listagens e arquivos; o limite de código é de quatro clientes.
@@ -184,14 +185,14 @@ A galeria está preparada para receber imagens reais conforme o [guia de captura
 
 ### 13. Atualizações — implementado, ainda experimental
 
-**X → Sistema → Atualizações** consulta o repositório oficial em segundo plano e mostra versão instalada/disponível, canal, notas, bytes e estado. **ESTÁVEL é o padrão**; EXPERIMENTAL exige escolha explícita. A checagem ao abrir pode ser desativada. Download e instalação exigem confirmação; não há instalação silenciosa nem downgrade automático.
+**+ Menu → Sistema → Atualizações** consulta o repositório oficial em segundo plano e mostra versão instalada/disponível, canal, notas, bytes e estado. **ESTÁVEL é o padrão**; EXPERIMENTAL exige escolha explícita. A checagem ao abrir pode ser desativada. Download e instalação exigem confirmação; não há instalação silenciosa nem downgrade automático.
 
 HTTPS verifica certificados/nome/data. SHA-256 e metadados vinculam o NRO e o auxiliar ao manifesto. A instalação ocorre em **outro NRO**, após sair do aplicativo, com backup, recuperação e rollback explícito. Caminho desconhecido, diferente do oficial ou cópia incompatível bloqueiam a instalação. Esses fluxos têm testes de host e compilação; **não estão homologados no Switch Lite**. [Atualização e recuperação](docs/ATUALIZACOES.md).
 
 ## Canais e downloads
 
 - **Canal estável: v0.10.7**, Release pública legada, cuja homologação não foi auditada nesta missão; não equivale a homologar as funções novas desta branch. [Releases públicas](https://github.com/TemudjinBR/switch-file-manager/releases/latest).
-- **Candidata 0.10.13 experimental:** [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) e [artefatos Actions](https://github.com/TemudjinBR/switch-file-manager/actions/workflows/build.yml). O ZIP externo inclui NRO, auxiliar, ZIP para SD, manifestos e checksums.
+- **Candidata 0.10.14 experimental:** [PR #3](https://github.com/TemudjinBR/switch-file-manager/pull/3), branch `codex/menu-global-sobre-0-10-14`, derivada do [PR #2](https://github.com/TemudjinBR/switch-file-manager/pull/2); base preservada no [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) e [artefatos Actions](https://github.com/TemudjinBR/switch-file-manager/actions/workflows/build.yml). O ZIP externo inclui NRO, auxiliar, ZIP para SD, manifestos e checksums.
 - A checagem no console usa **Releases públicas com update.json**, não artefatos privados do Actions. Pré-Releases experimentais podem ser disponibilizadas pelo workflow manual; não são oferecidas como estáveis. Nesta missão não se acionou publicação ou merge.
 
 Cada número X.Y.Z é único. Uma pré-Release publicada não é convertida automaticamente em estável; outra versão e homologação são necessárias. Publicação estável exige revisão, checks, proteção da main e aprovação física do commit/binários exatos. [Processo de promoção](docs/PROMOCAO_E_RELEASES.md).
@@ -210,11 +211,11 @@ Sem datas prometidas. O [roadmap](docs/ROADMAP.md) detalha prioridades e limites
 
 ## Como instalar
 
-1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. O [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) contém a **0.10.13 experimental** e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
+1. **Escolha a origem:** [Releases](https://github.com/TemudjinBR/switch-file-manager/releases) reúne versões públicas; a última verificada nesta missão é a **v0.10.7**. A Missão 3.6 contém a **0.10.14 experimental**, sobre os PRs #1 e #2 preservados e os [artefatos de Actions](https://github.com/TemudjinBR/switch-file-manager/actions) são para testes.
 2. **Baixe `SwitchFileManager.nro`** e o checksum correspondente. A Release v0.10.7 oferece o NRO avulso; não pressupõe o ZIP de distribuição criado no desenvolvimento atual.
 3. **Confira o SHA-256** com uma ferramenta de confiança e coloque o NRO em `sdmc:/switch/Switch File Manager/` no microSD. Se estiver usando o ZIP de teste, extraia sua pasta `switch` na raiz do cartão.
 4. **Abra pelo Homebrew Menu** em um console desbloqueado com Atmosphère. Preserve as configurações já existentes em `switch/switch-manager`.
-5. **Confira a versão do arquivo baixado** pela tag da Release, execução de Actions e metadados NACP apresentados pelo launcher quando disponíveis. O log de início também registra a versão. **O cabecalho mostra versao e build. Acoes → Versao e diagnostico do NRO mostra o caminho em execucao e permite conferir copias no SD, sem exclui-las.**
+5. **Confira a versão do arquivo baixado** pela tag da Release, execução de Actions e metadados NACP apresentados pelo launcher quando disponíveis. O log de início também registra a versão. **O cabecalho mostra versao e build. + Menu → Sistema → Versão e diagnósticos mostra o caminho em execucao e permite conferir copias no SD, sem exclui-las.**
 
 Para comparar hashes no terminal: `sha256sum SwitchFileManager.nro`. A verificação ajuda a conferir o download, mas não substitui os testes no console.
 
@@ -232,8 +233,8 @@ O pacote experimental identifica **switch/Switch File Manager/SwitchFileManager.
 | Listas: ZL / ZR | Subir / descer uma página de itens. |
 | Listas: A / B | Abrir item / subir uma pasta; A em ZIP ou NRO abre as opções correspondentes. |
 | Listas: Y | Marcar ou desmarcar o item e avançar o foco quando houver próximo item. |
-| Listas: X | Abrir o menu Ações e seus submenus. |
-| Listas: − / + | Alternar SD/Drive no painel ativo / sair. |
+| Listas: X | Ações contextuais; sem seleção, somente uma orientação. |
+| Listas: + / − | Menu global / saída com confirmação e encerramento seguro. |
 | Menus: ↑/↓, ZL/ZR, A/B | Navegar, saltar páginas, confirmar / cancelar. |
 | Progresso: B | Solicitar cancelamento onde suportado; não é uma parada instantânea universal. |
 | Login Drive: B ou botão Cancelar por toque | Sair do diálogo de login. |
@@ -241,7 +242,7 @@ O pacote experimental identifica **switch/Switch File Manager/SwitchFileManager.
 | Arrastar nas listas ou menus | Rolar quando houver conteúdo além da área visível. |
 | Toque nos botões inferiores e nas opções de menu | Acionar a função indicada; toque fora do modal cancela esse menu. |
 
-As tabelas descrevem os contextos do código: **+ não é um comando global garantido dentro de qualquer modal**. A entrada de nomes usa o teclado de sistema do Switch. O mapa completo está em [Controles](docs/CONTROLES.md).
+As tabelas descrevem os contextos do código: **+ abre o menu global; durante uma operação síncrona, o pedido aguarda seu encerramento seguro**. A entrada de nomes usa o teclado de sistema do Switch. O mapa completo está em [Controles](docs/CONTROLES.md).
 
 ## Integrações e dados
 
@@ -269,7 +270,7 @@ O uso do FTP local não exige serviço pago. Drive requer conta e projeto OAuth 
 | `third_party/` | Bibliotecas incorporadas com seus créditos e licenças. |
 | `.github/workflows/` | CI e publicação manual com critérios separados. |
 
-A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.13** e é a fonte para NACP, pacote e log inicial. A Missao 3.2 preserva diagnosticos FTP/NRO e downloads recuperaveis, amplia sessoes BSD, evita esperas bloqueantes e testa FTP + Drive sobrepostos; o logotipo e as demais funcionalidades permanecem preservados.
+A arquitetura modular e a apresentação anteriores foram preservadas. `VERSION` está em **0.10.14** e é a fonte para NACP, pacote e log inicial. A Missao 3.2 preserva diagnosticos FTP/NRO e downloads recuperaveis, amplia sessoes BSD, evita esperas bloqueantes e testa FTP + Drive sobrepostos; o logotipo e as demais funcionalidades permanecem preservados.
 
 ```bash
 python3 tests/run.py

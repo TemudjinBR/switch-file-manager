@@ -1,18 +1,14 @@
 # Compactação, inspeção e extração ZIP
 
-Estado: **implementado**, com miniz real nos testes de host. Integração no console, arquivos grandes e ZIP64 permanecem sem validação física suficiente. Fontes: [zipx.cpp](../src/archives/zipx.cpp), [políticas de caminhos](../src/security/path_policy.cpp) e `zipMenu`/`doExtractZip`/`doCompressZip` em [main.cpp](../src/app/main.cpp).
+Estado: **implementado**, com miniz real nos testes de host. Integração no console, arquivos grandes e ZIP64 permanecem sem validação física suficiente. Fontes: [zipx.cpp](../src/archives/zipx.cpp), [políticas de caminhos](../src/security/path_policy.cpp) e `extractSelectedZips`/`doExtractZip`/`doCompressZip` em [main.cpp](../src/app/main.cpp).
 
 ## Usar o menu
 
-Em **X → Ações → Compactar e extrair (ZIP)**:
+Com itens locais selecionados, **X → Compactar em ZIP** abre Cancelar, Rápida e Sem compressão (níveis 1 e 0). Reúne arquivos/pastas em um ZIP, preservando o motor existente.
 
-- **Compactar a seleção (rápido):** arquivos, pastas e seleções múltiplas locais, nível 1 da biblioteca.
-- **Compactar a seleção (sem compressão):** mesmos tipos de entrada, nível 0.
-- **Extrair o ZIP selecionado aqui:** cria uma pasta com nome disponível na pasta atual.
-- **Extrair o ZIP selecionado no outro painel:** o painel de destino precisa estar no SD.
-- **Informações do ZIP:** quantidade de arquivos, pastas, tamanho descompactado e indicação de itens protegidos por senha.
+Quando toda a seleção é ZIP, aparece **Extrair ZIP** ou **Extrair ZIPs**. O diálogo oferece Cancelar, Na pasta do painel ativo e Na pasta do outro painel; cada ZIP gera uma pasta exclusiva, e o destino precisa estar no microSD.
 
-A em um `.zip` local também abre opções de extração/inspeção. A API de compressão admite outros níveis, mas a UI atual oferece somente rápido e sem compressão; não anunciar um terceiro modo no menu.
+**A** em um ZIP local mantém Cancelar, Extrair aqui, Extrair no outro painel e Informações. A inspeção mostra arquivos, pastas, tamanho descompactado e indicação de senha. A API admite outros níveis de compressão, mas a UI só oferece rápido/sem compressão.
 
 ## Verificações e cancelamento
 

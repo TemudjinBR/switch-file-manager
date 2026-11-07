@@ -12,7 +12,7 @@ from package import SD_PATH
 def inspect(root, expected=None):
     expected = read_version() if expected is None else expected
     root = Path(root)
-    paths = [root] if root.is_file() else sorted(root.rglob('*.nro'))
+    paths = [root] if root.is_file() else sorted(path for path in root.rglob('*') if path.suffix.lower() == '.nro')
     found, invalid = [], []
     for path in paths:
         if path.is_symlink():

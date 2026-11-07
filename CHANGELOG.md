@@ -1,5 +1,14 @@
 # Histórico de alterações
 
+## 0.10.14 — experimental, Missão 3.6 (07/11/2026)
+
+- **+** Menu global com cinco categorias fixas; X exclusivamente contextual; − Sair com confirmação, cancelamento cooperativo e encerramento normal dos serviços.
+- Rodapé físico/tátil compartilhado, seleção preservada ao abrir menus, SD↔Drive em Arquivos e pastas; ZL+Y/ZL+X preservados.
+- Sobre diretamente na raiz, sem duplicação em Sistema; removido atalho redundante para configurações do atualizador. Mover remoto deixa de ser oferecido quando não é suportado.
+- Ícone do Sobre derivado do JPEG oficial, RGB888 256×256 nativo, blit direto; JPEG NACP e matriz Pix originais preservados. Apoio voluntário abaixo das informações.
+- Diagnóstico de cópias mostra SHA-256 somente por leitura; ferramenta de inspeção cobre ocultos e extensão NRO em maiúsculas, sem exclusão automática.
+- Novos testes executáveis de atalhos/contexto/toque/saída durante cópia, renderização real em host e fidelidade de ícone/QR. Instalação Android documentada; homologação no Lite pendente.
+
 ## 0.10.13 — experimental, Missão 3.3 (06/11/2026)
 
 - Atualizações com canal estável padrão, experimental explícito, consulta em worker, preferências, notas, tamanho/progresso e confirmação de download/instalação.

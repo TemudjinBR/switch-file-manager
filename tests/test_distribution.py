@@ -116,6 +116,23 @@ class DistributionTests(unittest.TestCase):
             self.assertEqual(old.read_bytes(), bytes(old_data))
             self.assertEqual(current.read_bytes(), minimal_nro())
 
+    def test_hidden_nro_copies_are_hashed_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hidden = root / '.backup/.SwitchFileManager.NRO'
+            hidden.parent.mkdir()
+            payload = minimal_nro()
+            hidden.write_bytes(payload)
+            visible = root / 'SwitchFileManager.nro'
+            visible.write_bytes(payload)
+            before = {p.relative_to(root): p.read_bytes() for p in (hidden, visible)}
+            result = inspect(root)
+            self.assertTrue(result['duplicado'])
+            self.assertEqual(len(result['copias']), 2)
+            self.assertTrue(all(item['sha256'] == hashlib.sha256(payload).hexdigest()
+                                for item in result['copias']))
+            self.assertEqual(before, {p.relative_to(root): p.read_bytes() for p in (hidden, visible)})
+
     def test_nacp_version_is_extracted_directly_from_compiled_asset(self):
         # A fixture é verificada sempre; o caso compilado também roda quando --nro é fornecido.
         data = Path(os.environ['SFM_TEST_NRO']).read_bytes() if os.environ.get('SFM_TEST_NRO') else minimal_nro()

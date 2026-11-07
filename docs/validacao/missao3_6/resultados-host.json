@@ -1,0 +1,48 @@
+{
+  "ambiente": "compilação em nuvem local desta missão, não o artefato Actions",
+  "versao": "0.10.14",
+  "build": "v0.10.14-f88934f06ffe",
+  "base_pr2": "02d6b065bb20a888452d7f380fb96f84f2abb402",
+  "host": {
+    "casos": 207,
+    "falhas": 0,
+    "skips": 3
+  },
+  "com_nro": {
+    "casos": 207,
+    "falhas": 0,
+    "skips": 0
+  },
+  "validacao_console": "PENDENTE DE TESTE FÍSICO",
+  "arquivos": [
+    {
+      "arquivo": "SwitchFileManager.nro",
+      "bytes": 1242840,
+      "sha256": "2f7e7a7cadafc391b9c422f2c702a40d617e9efe1cde5cbd5bf2f1909f0417f8"
+    },
+    {
+      "arquivo": "SfmUpdateHelper.nro",
+      "bytes": 386776,
+      "sha256": "8f2db94304afd5d71a7619d1964594ea60ffa8f69f8420f291bd48a11713a62c"
+    },
+    {
+      "arquivo": "SwitchFileManager-v0.10.14.zip",
+      "bytes": 881427,
+      "sha256": "a7d28789ef8f10f38e0d41a4f6b83873287431a997f4257e41dcca34bd610821"
+    }
+  ],
+  "nro_principal": {
+    "build": "v0.10.14-f88934f06ffe",
+    "arquivo": "SwitchFileManager.nro",
+    "bytes": 1242840,
+    "versao": "0.10.14",
+    "titulo": "Switch File Manager"
+  },
+  "nro_auxiliar": {
+    "build": "v0.10.14-f88934f06ffe",
+    "arquivo": "SfmUpdateHelper.nro",
+    "bytes": 386776,
+    "versao": "0.10.14",
+    "titulo": "Atualizador do Switch File Manager"
+  }
+}

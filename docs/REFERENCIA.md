@@ -105,7 +105,7 @@ A reprodução com EEXIST comprova uma incompatibilidade do código anterior; n�
 
 A Missao 3.1 entregou **0.10.10 experimental**, mesma branch/PR #1. Antes de alterar autenticação, ler o [contrato de contas/persistência](GOOGLE_DRIVE_PERSISTENCIA.md). O arquivo drive-account.json é a autoridade quando existe; nunca retornar silenciosamente ao token legado se o estado novo for inválido/forgotten. Desconectar preserva autorização; Esquecer é explícito, seletivo e local. PKCE/state não tornam a combinação Android↔Switch automaticamente homologada pelo Google.
 
-FTP/Drive usam exclusivamente socket_runtime; não inserir socketInitialize/socketExit nos consumidores. O último dono encerra, e falhas permitem retry. VERSION prevalece sobre argumentos antigos do make; NACP é conferido por conteúdo. O menu Ações e log de caminho ajudam a diferenciar cópias antigas no Homebrew Menu.
+FTP/Drive usam exclusivamente socket_runtime; não inserir socketInitialize/socketExit nos consumidores. O último dono encerra, e falhas permitem retry. VERSION prevalece sobre argumentos antigos do make; NACP é conferido por conteúdo. Sobre, Versão e diagnósticos e log de caminho ajudam a diferenciar cópias antigas no Homebrew Menu.
 
 O [histórico da Missão 3](historico/VALIDACAO_MISSAO_3.md) preserva sua execução anterior; [relatório atual](RELATORIO_VALIDACAO.md) e logs/artefatos do Actions são a evidência desta revisão. Esse era o estado daquela rodada; o anexo posterior aprova FTP isolado/sequencial e acesso/persistência/reconexão Drive, sem aprovar simultaneidade ou a nova candidata. Não fazer merge ou Release nesta missão.
 
@@ -123,4 +123,10 @@ No callback setNetworkPump, somente UI/FTP/controle de cancelamento; nunca chama
 
 ## Atualizador — Missão 3.3
 
-Atual: **0.10.13 experimental**, preservando 7116e34 e o PR #1. Ler [ATUALIZACOES](ATUALIZACOES.md) e [PROMOCAO_E_RELEASES](PROMOCAO_E_RELEASES.md) antes de mudar atualização/distribuição. O alvo é apenas o caminho oficial validado contra argv[0]/NACP/build. Nunca instalar pelo processo principal, baixar de Actions com token pessoal, mover tags ou promover por CI verde. main foi observada sem proteção; gate bloqueia até configuração administrativa real e homologação. Não inventar relatório físico aprovado.
+Base da Missão 3.3: **0.10.13 experimental**, preservando 7116e34 e o PR #1; candidata de interface atual: 0.10.14, descrita abaixo. Ler [ATUALIZACOES](ATUALIZACOES.md) e [PROMOCAO_E_RELEASES](PROMOCAO_E_RELEASES.md) antes de mudar atualização/distribuição. O alvo é apenas o caminho oficial validado contra argv[0]/NACP/build. Nunca instalar pelo processo principal, baixar de Actions com token pessoal, mover tags ou promover por CI verde. main foi observada sem proteção; gate bloqueia até configuração administrativa real e homologação. Não inventar relatório físico aprovado.
+
+## Continuação na Missão 3.6
+
+Candidata atual de interface: **0.10.14 experimental**, branch `codex/menu-global-sobre-0-10-14`, derivada do PR #2/02d6b06; PR #1/84e3f76 preservado. Não misturar artefatos 0.10.13 com esta correção. [Relatório](MISSAO_3_6.md), [controles](CONTROLES.md), [mapa antes/depois](MENU_CONTEXTUAL.md), [instalação Android](VERSAO_E_INSTALACAO.md). + Menu global, X contextual, − saída confirmada; Sobre na quinta entrada.
+
+`include/ui/navigation.h` contém a política de entrada e rodapé compartilhada com testes; `src/ui/about_view.cpp` desenha o Sobre. `scripts/generate_about_icon.py` deriva RGB888 do JPEG oficial com Pillow apenas na preparação de arte; header rastreado permite compilar sem Pillow. Não regenerar QR/beneficiário. O renderer tem backend HOST_TEST para prévia com fonte substituta; não é captura do Switch nem teste de latência/memória no aparelho.

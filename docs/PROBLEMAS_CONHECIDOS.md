@@ -72,3 +72,7 @@ A UI e o Drive usam uma única thread, com callback não reentrante durante espe
 ## Atualizador — Missão 3.3
 
 Atualização está implementada, mas não homologada no Lite. Sem Releases compatíveis com update.json, o app não terá versão instalável; artefatos Actions exigem instalação inicial pelo Android. DNS/SD podem atrasar cancelamento/saída; não há assinatura independente nem retomada do download do atualizador. Backup/rename não garantem atomicidade elétrica, e áreas antigas consomem SD. main está sem proteção na consulta desta missão, portanto promoção está bloqueada. [Limites e recuperação](ATUALIZACOES.md).
+
+## Candidata de interface 0.10.14
+
+PENDENTE DE TESTE FÍSICO: controles e layout reais no Lite, seleção com mudanças FTP, saída durante rede/E/S e leitura do QR na tela física. Prévia host usa fonte substituta. + durante operação síncrona agenda menu; não libera navegação concorrente dos painéis. − depende de pontos de cancelamento e pode aguardar DNS/SD/encerramento de clientes. Fila local ainda não persiste na saída. Não há alegação de correção física de FTP/Drive, retomada de upload ou unificação de filas. [Missão 3.6](MISSAO_3_6.md).

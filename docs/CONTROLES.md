@@ -1,68 +1,42 @@
-# Controles e navegação
+# Controles e navegação — 0.10.14 experimental
 
-Estado: **implementado no código**, validação física integral da revisão pendente. Fonte principal: [main.cpp](../src/app/main.cpp), funções `handleInput`, `modal`, `updateTouch`, `toggleMark`, `tickProgress`, `ensureDriveLogin` e `askText`.
+Implementados no código; **PENDENTE DE TESTE FÍSICO no Switch Lite**. A política compartilhada está em [navigation.h](../include/ui/navigation.h), integrada por `handleInput`, `dispatch` e pelo rodapé em [main.cpp](../src/app/main.cpp).
 
-## Listas e tela principal
+## Tela principal
 
 | Entrada | Ação |
 | --- | --- |
-| Direcional ↑/↓ ou analógico esquerdo ↑/↓ | Move o foco; após o atraso inicial, manter pressionado repete. |
-| Direcional ←/→ | Ativa respectivamente painel esquerdo/direito. Não é um atalho de subir/entrar em pasta. |
-| L ou R | Alterna o painel ativo. |
-| ZL/ZR | Move o foco uma página acima/abaixo, conforme a quantidade de linhas da interface. |
-| A | Abre pasta; em ZIP abre as opções; em NRO pede confirmação; em outros arquivos mostra informações básicas. |
-| B | Sobe uma pasta do painel ativo. Na raiz local ou do Drive, permanece nela. |
-| Y | Marca/desmarca o item e avança o foco, se houver próximo item. |
-| ZL + Y | Abre as opções avançadas de marcação (todos, somente arquivos, somente pastas, inverter, limpar). |
-| ZL + X | Abre as propriedades detalhadas do item ou da marcação múltipla. |
-| X | Abre o menu Ações: categorias gerais sem seleção, operações diretas com item selecionado. |
-| − | Alterna o painel ativo entre SD e Drive; pode abrir o fluxo de login. Voltar ao SD não equivale a desconectar a conta. |
-| + | Solicita saída na tela principal. |
+| + | Menu global, sempre: Arquivos e pastas, Transferências, Organização, Sistema, Sobre. Não altera seleção. |
+| X | Somente ações contextuais. Sem foco/marcações, orientação “Selecione um arquivo ou pasta”. |
+| − | Confirmação de saída; recusar preserva o trabalho; confirmar solicita cancelamento e aguarda os serviços. |
+| A / B | Abrir item / subir à pasta superior. Na raiz, B permanece nela. |
+| Y | Marcar/desmarcar item e avançar foco, quando possível. |
+| ZL + Y | Seleção avançada: todos, arquivos, pastas, inverter, limpar. |
+| ZL + X | Propriedades detalhadas do item ou da seleção. |
+| L ou R | Alternar painel ativo, preservando o contexto próprio de cada painel. |
+| ← / → | Ativar painel esquerdo / direito. |
+| ↑/↓ ou analógico esquerdo vertical | Mover foco; manter pressionado repete após atraso. |
+| ZL / ZR isolados | Página acima / abaixo. |
 
-O rodapé oferece as mesmas ações por toque: **Abrir**, **Voltar**, **Marcar**, **Ações**, **Painel**, **Nuvem** e **Sair**.
+Rodapé tátil: **A Abrir, B Voltar, Y Marcar, X Ações, L/R Painel, + Menu, − Sair**. Usa a mesma política dos comandos físicos. Para SD↔Drive: **+ → Arquivos e pastas → Alternar microSD / Google Drive neste painel**. Transferências → Google Drive e conta também oferece essa alternância.
 
-## Menus e modais
+## Menus, Sobre e toque
 
-- ↑/↓ ou analógico esquerdo vertical mudam a opção; nessa lógica a seleção pode circular entre primeira e última.
-- ZL/ZR saltam a quantidade de opções visíveis.
-- A confirma; B cancela.
-- Tocar em uma opção a aciona; tocar fora da caixa cancela esse menu.
-- Arrastar a lista rola quando existem mais opções do que a área comporta.
+- ↑/↓ ou analógico vertical navegam; ZL/ZR saltam opções; A confirma; B cancela.
+- **+** fecha a cadeia de modais e solicita o menu global; nunca equivale a sair.
+- − abre confirmação de saída; B ou Continuar no aplicativo a recusa. Durante essa confirmação, +/− não substituem a escolha explícita.
+- Sobre: A/B/X ou botão Voltar retornam; + retorna ao menu global; − usa a mesma saída segura.
+- Toque em opção executa; fora do modal cancela. Arrastar rola listas longas.
+- Primeiro toque atribui foco/ativa painel; tocar novamente no mesmo item focado abre. Arrastar a lista não altera automaticamente o foco. Não há temporizador de duplo clique.
 
-**+ não é tratado como saída global dentro de qualquer modal.** Os contextos de login e progresso têm lógica própria. Não há atalho de teclado externo anunciado.
+Abrir/fechar o menu não limpa marcações. Recarregar a pasta, ou detectar alterações FTP que exigem recarga, pode invalidá-las; o contextual cancela se seu alvo mudou.
 
-## Toque nas listas
+## Operações em andamento
 
-O primeiro toque seleciona e ativa o painel. Tocar no mesmo item já em foco no painel ativo o abre; não há um temporizador de “duplo clique” específico. Arrastar verticalmente rola o painel iniciado pelo gesto. Tocar no cabeçalho também pode selecionar o painel.
+B solicita cancelamento nas operações que o consultam; Y inicia/para FTP durante esperas Drive, com confirmação inicial. Download Drive mantém X/toque Pausar/Continuar e B/toque Cancelar.
 
-Rolagem por toque não é a mesma coisa que mover o foco com os botões. Por isso, um item previamente focado pode ficar fora da parte rolada até nova navegação/seleção.
+Durante cópia, ZIP ou requisição Drive síncrona, + registra o pedido e abre o menu quando a operação devolve controle, sem interromper uma gravação. − confirma, sinaliza cancelamento cooperativo e espera o retorno; depois encerra o worker de atualizações, FTP e sockets. Etapas já concluídas não são desfeitas. E/S SD, DNS e operações que não consultam progresso podem atrasar a resposta; não se promete saída instantânea.
 
-## Progresso e login
+No login por navegador, B/toque cancelam; + cancela apenas esse diálogo e pede menu; − confirma saída e encerra o servidor local. A conta anterior é preservada pelo fluxo OAuth existente. O teclado do sistema e o Homebrew Menu são interfaces externas ao aplicativo: seus atalhos próprios não são remapeados. A transação do auxiliar não recebe atalho para interrupção no meio da instalação.
 
-`tickProgress` lê B para solicitar cancelamento nas operações que o consultam. Isso inclui cópias, comparações e pontes de progresso do Drive/ZIP e cálculos locais, com diferenças por operação. Não significa que toda etapa ou remoção seja interrompida imediatamente, nem desfaz ações já concluídas.
-
-No login Drive, B ou o botão Cancelar por toque encerra o diálogo local; ele não é uma correção da falha de salvar token. Para nomes, renomeações e busca, o aplicativo usa o teclado do sistema (`swkbd`), que depende do ambiente de execução.
-
-## Menu contextual — patch experimental 0.10.13
-
-**Sem item escolhido:** ao abrir o programa/entrar na pasta, X apresenta **Arquivos e pastas**, **Transferências**, **Organização** e **Sistema**. Não há categoria Ferramentas.
-
-**Com um arquivo/pasta selecionado:** X apresenta **Copiar, Mover, Selecionar tudo, Excluir, Renomear** e **Compactar em ZIP**. Se o item local é ZIP, aparece **Extrair ZIP** em vez de Compactar.
-
-**Com vários itens marcados:** X apresenta **Copiar, Mover, Desmarcar tudo, Excluir** e **Compactar em ZIP**; quando todos são ZIPs locais, a última ação é **Extrair ZIP**, aplicável a todos, com destino escolhido e pastas únicas.
-
-Ao mover o cursor com controles ou tocar num item, esse item se torna o alvo contextual. **O primeiro destaque automático após carregar uma pasta não equivale a selecionar.** Ao recarregar, marcações e foco contextual são limpos. Alterar de painel preserva o foco próprio de cada painel. Copiar/mover usam o painel oposto como destino. As ações de ZIP só aparecem em conteúdos locais, não no Drive.
-
-**Sistema → Sobre:** informações de versão e autoria, depois seção de contribuição voluntária com QR Pix sem valor fixo. Nenhuma referência ao Pix aparece no menu Sistema.
-
-**Transferências:** reúne links para fila local, servidor FTP, conta Drive e downloads recuperáveis. Esta primeira reorganização **não unifica os mecanismos internos numa única fila**; não atribuir a esta revisão essa capacidade.
-
-Consulte também [o novo mapa contextual](MENU_CONTEXTUAL.md).
-
-## Esperas Drive — candidata 0.10.12
-
-Durante navegação/transferência remota, B solicita cancelamento e Y inicia/para o FTP; a primeira ativação pede confirmação do acesso anônimo. Fora dessa espera, Y continua marcando itens como antes. X e toque continuam Pausar/Continuar em downloads, B/toque Cancelar. DNS e E/S SD podem atrasar a resposta. Não há navegação livre dos painéis durante uma transferência Drive síncrona.
-
-## Atualizador — Missão 3.3
-
-X → Sistema → Atualizações usa o modal existente: botões/toque para verificar, notas, baixar, instalar, recuperar anterior, alternar canal/checagem e cancelar tarefa. B sai do diálogo sem cancelar implicitamente o worker. Instalação/rollback exigem confirmação; o auxiliar mostra erro em console e B para sair. [Detalhes](ATUALIZACOES.md).
+A fila local é somente em memória e a saída avisa que tarefas ainda não executadas não serão salvas. Downloads recuperáveis usam seus checkpoints existentes. Isso não transforma FTP/Drive/fila local em um motor unificado. [Matriz contextual e checklist](MENU_CONTEXTUAL.md).

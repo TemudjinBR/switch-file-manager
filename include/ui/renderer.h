@@ -29,5 +29,10 @@ void fillRound(int x, int y, int w, int h, int r, Col c);
 int textWidth(const Fnt& f, const std::string& str);
 std::string fitText(const Fnt& f, std::string s, int maxW);
 void drawText(const Fnt& f, std::string s, int x, int y, Col c, int maxW = 0, int align = 0);
+void blitRgb24(int x, int y, int w, int h, const uint8_t* rgb, int scale = 1);
 void present();
+#ifdef HOST_TEST
+bool initializePreview(const std::string& fontPath);
+const uint32_t* previewPixels();
+#endif
 }

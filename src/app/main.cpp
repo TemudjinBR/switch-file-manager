@@ -29,8 +29,9 @@
 #include "security/paths.h"
 #include "ui/renderer.h"
 #include "ui/context_actions.h"
-#include "ui/pix_qr.h"
-#include "ui/official_icon.h"
+#include "ui/navigation.h"
+#include "ui/about_view.h"
+#include "ui/menu_view.h"
 using namespace sfm::paths;
 using namespace sfm::storage;
 using namespace sfm::security;
@@ -40,7 +41,14 @@ using namespace sfm::ui;
 #include "wifi_transfer.h"
 
 static PadState pad;
-static bool g_quit = false, g_cancel = false;
+namespace nav = sfm::ui::navigation;
+static nav::Session g_session;
+static bool& g_quit = g_session.quit;
+static bool& g_cancel = g_session.cancel;
+static bool g_exitDialog = false;
+static bool requestExit();
+static void globalMenu();
+static std::string g_hint;
 static std::string g_executable = "indisponivel";
 static sfm::updates::Service g_updates;
 static std::string updateMenuText();
@@ -311,13 +319,6 @@ static void drawPane(Pane& p, int x, bool act) {
     }
 }
 
-struct Btn { const char* key; const char* label; int id; };
-enum { B_OPEN, B_UP, B_MARK, B_ACT, B_PANE, B_CLOUD, B_EXIT };
-static const int NBTN = 7;
-static const Btn BTNS[NBTN] = {
-    {"A", "Abrir", B_OPEN}, {"B", "Voltar", B_UP}, {"Y", "Marcar", B_MARK}, {"X", "Ações", B_ACT},
-    {"L/R", "Painel", B_PANE}, {"-", "Nuvem", B_CLOUD}, {"+", "Sair", B_EXIT}};
-
 static void drawMain() {
     fillRect(0, 0, W, H, C_BG);
 
@@ -351,14 +352,11 @@ static void drawMain() {
     drawPane(panes[0], 20, active == 0);
     drawPane(panes[1], 650, active == 1);
 
-    for (int i = 0; i < NBTN; i++) {
-        int bx = 22 + i * 178;
-        fillRound(bx, 646, 168, 58, 12, C_PANEL);
-        fillRound(bx + 8, 655, 44, 39, 9, C_PAN2);
-        int lx = bx + 58;
-        drawText(fM, BTNS[i].key, bx + 30, 660, C_ACC, 40, 2);
-        drawText(fM, BTNS[i].label, lx, 660, C_TXT, bx + 160 - lx);
+    if (!g_hint.empty()) {
+        fillRound(365, 605, 550, 30, 8, C_PAN2);
+        drawText(fS, g_hint, W/2, 608, C_YEL, 530, 2);
     }
+    drawFooter();
 }
 
 // ---------------------------------------------------------------- entrada
@@ -391,26 +389,25 @@ static bool inRect(int px, int py, int x, int y, int w, int h) {
 
 static int modal(const std::string& title, const std::string& text, const std::vector<std::string>& opts, int sel = 0) {
     std::vector<std::string> lines = splitLines(text);
-    const int bw = 640, lineH = 30;
     int n = (int)opts.size();
     if (n == 0) return -1;
-    int rowH = n > 8 ? 46 : 54;
-    int textH = lines.empty() ? 0 : (int)lines.size() * lineH + 14;
-    int maxVis = std::max(3, (H - 40 - 84 - textH - 22) / rowH);
-    int vis = std::min(n, maxVis);
-    int bh = 84 + textH + vis * rowH + 22;
-    int bx = (W - bw) / 2, by = (H - bh) / 2;
-    int oy0 = by + 84 + textH;
+    const auto layout = menuLayout(n, int(lines.size()));
+    const int bw=layout.bw, rowH=layout.rowH, vis=layout.vis, bh=layout.bh,
+        bx=layout.bx, by=layout.by, oy0=layout.oy0;
     if (sel < 0 || sel >= n) sel = 0;
     int top = 0;
     if (sel >= vis) top = sel - vis + 1;
 
     for (;;) {
+        // A falha de next-load ainda pode abrir um diagnóstico no encerramento.
+        if ((g_quit && g_cancel) || (g_session.menuPending && !g_exitDialog)) return -1;
         if (!appletMainLoop()) { g_quit = true; return -1; }
         padUpdate(&pad);
         updateTouch();
         pump();
         u64 d = padGetButtonsDown(&pad);
+        if (!g_exitDialog && (d & HidNpadButton_Plus)) { g_session.menu(); return -1; }
+        if (!g_exitDialog && (d & HidNpadButton_Minus) && requestExit()) return -1;
         if (d & HidNpadButton_B) return -1;
         if (d & (HidNpadButton_Up | HidNpadButton_StickLUp)) sel = (sel + n - 1) % n;
         if (d & (HidNpadButton_Down | HidNpadButton_StickLDown)) sel = (sel + 1) % n;
@@ -453,26 +450,25 @@ static int modal(const std::string& title, const std::string& text, const std::v
                 if (!panes[pi].drive) panes[pi].reload();
         }
         drawMain();
-        fillRect(0, 0, W, H, Col{0, 0, 0, 175});
-        fillRound(bx, by, bw, bh, 18, C_PANEL);
-        drawText(fL, title, bx + 28, by + 22, C_TXT, bw - 56);
-        for (int i = 0; i < (int)lines.size(); i++)
-            drawText(fM, lines[i], bx + 28, by + 80 + i * lineH, C_DIM, bw - 56);
-        for (int k = 0; k < vis; k++) {
-            int i = top + k;
-            int oy = oy0 + k * rowH;
-            bool danger = opts[i].rfind("Apagar", 0) == 0;
-            fillRound(bx + 20, oy, bw - 40, rowH - 6, 12, i == sel ? C_ACCD : C_PAN2);
-            drawText(fM, opts[i], bx + bw / 2, oy + (rowH - 54) / 2 + 9, danger ? C_RED : C_TXT, bw - 90, 2);
-        }
-        if (n > vis) {
-            int trackH = vis * rowH - 6;
-            int thumbH = std::max(24, trackH * vis / n);
-            int thumbY = oy0 + (trackH - thumbH) * top / std::max(1, n - vis);
-            fillRound(bx + bw - 14, thumbY, 4, thumbH, 2, C_DIM);
-        }
+        drawMenu(title, lines, opts, sel, top, layout);
         present();
     }
+}
+
+static bool requestExit() {
+    if (g_exitDialog || g_quit) return g_quit;
+    g_exitDialog = true;
+    const int choice = modal("Sair do aplicativo?",
+        "Cancelar operações e sair com segurança?\n"
+        "Aguarda retorno seguro e fim dos serviços.\n"
+        "A fila local pendente não será salva.\n"
+        "Downloads recuperáveis e credenciais\n"
+        "permanecem nas áreas existentes.",
+        {"Continuar no aplicativo", "Sair com segurança"});
+    g_exitDialog = false;
+    g_session.exit(choice == 1);
+    if (g_quit) g_cancel = true;
+    return g_quit;
 }
 
 static void message(const std::string& title, const std::string& text) {
@@ -558,6 +554,7 @@ static void drawProgressOverlay() {
         drawText(fS, "B  Cancelar", bx + 520, by + 305, C_TXT, 0, 2);
     } else drawText(fS, "B: solicitar cancelamento", bx + bw - 30, by + 184, C_DIM, 0, 1);
     drawText(fS, std::string("Y: ") + (wifi::running() ? "parar FTP | " + wifi::url() : "iniciar FTP"), bx + 30, by + bh + 12, C_TXT, bw - 60);
+    drawText(fS, "+ Menu após operação | − Sair com segurança", bx + 30, by + bh + 42, C_DIM, bw - 60);
 }
 
 static void tickProgress(bool force = false) {
@@ -565,6 +562,8 @@ static void tickProgress(bool force = false) {
     // Capturar B em toda chamada, mesmo quando o desenho da tela é limitado a 80 ms.
     padUpdate(&pad);
     u64 down = padGetButtonsDown(&pad);
+    if (down & HidNpadButton_Plus) { g_session.menu(); g_hint = "Menu disponível após encerrar esta operação"; }
+    if (down & HidNpadButton_Minus) requestExit();
     if (down & HidNpadButton_B) g_cancel = true;
     if (down & HidNpadButton_Y) manageFtpDuringDrive();
     if (g_dlActive) {
@@ -632,6 +631,8 @@ static bool driveNetworkPump() {
     else {
         padUpdate(&pad);
         u64 down = padGetButtonsDown(&pad);
+        if (down & HidNpadButton_Plus) { g_session.menu(); g_hint = "Menu disponível após encerrar esta operação"; }
+        if (down & HidNpadButton_Minus) requestExit();
         if (down & HidNpadButton_B) g_cancel = true;
         if (down & HidNpadButton_Y) manageFtpDuringDrive();
         u64 now = progressNowMs();
@@ -749,6 +750,7 @@ static bool ensureDriveLogin(bool newAccount = false) {
     showBusy("Conectando ao Google Drive...");
     if (!newAccount && gd::loadSavedLogin()) return true;
 
+    if (g_quit || g_session.menuPending) return false;
     std::string initialError = newAccount ? std::string() : gd::lastError();
     std::string url;
     if (!gd::loginServerStart(url)) {
@@ -758,11 +760,15 @@ static bool ensureDriveLogin(bool newAccount = false) {
     bool ok = false;
     std::string lastErr = initialError;
     for (;;) {
+        if (g_quit || g_session.menuPending) break;
         if (!appletMainLoop()) { g_quit = true; break; }
         padUpdate(&pad);
         updateTouch();
         pump();
-        if (padGetButtonsDown(&pad) & HidNpadButton_B) break;
+        const u64 keys = padGetButtonsDown(&pad);
+        if (keys & HidNpadButton_Plus) { g_session.menu(); break; }
+        if ((keys & HidNpadButton_Minus) && requestExit()) break;
+        if (keys & HidNpadButton_B) break;
         int bw = 900, bh = 460, bx = (W - bw) / 2, by = (H - bh) / 2;
         if (tp.released && !tp.moved && inRect(tp.x, tp.y, bx + bw / 2 - 150, by + bh - 76, 300, 56)) break;
 
@@ -1730,7 +1736,12 @@ static void buildMenu() {
         int index = modal("Copias do aplicativo", scan.limited || scan.cancelled ? "Busca limitada/cancelada; arquivos preservados." : "Somente leitura; nenhuma copia e excluida.", options);
         if (index >= 0) {
             const auto& copy = scan.copies[index];
-            message("Metadados da copia", wrapText("NACP: " + copy.version + " Build: " + copy.build, 44));
+            std::string hash, error;
+            uint64_t bytes = 0;
+            const bool hashed = sfm::updates::hashFile(copy.path, hash, bytes, error);
+            message("Metadados da copia", "NACP: " + copy.version + "\nBuild: " + copy.build +
+                "\nSHA-256 (somente leitura):\n" +
+                (hashed ? hash.substr(0,32) + "\n" + hash.substr(32) : "Falha: " + error));
             std::string running = g_executable; g_executable = copy.path; executablePath(); g_executable = running;
         }
     }
@@ -1759,6 +1770,7 @@ static std::string updateMenuText() {
 }
 static void updatesMenu() {
     for (;;) {
+        if (g_quit || g_session.menuPending) return;
         auto status = g_updates.status();
         auto prefs = g_updates.prefs();
         int choice = modal("Atualizações", updateMenuText(),
@@ -1896,7 +1908,7 @@ static const char* contextualLabel(sfm::ui::actions::Command action) {
 }
 static void filesAndFoldersMenu() {
     const int choice = modal("Arquivos e pastas", "",
-        {"Nova pasta", "Espaço total e livre do microSD", "Analisar espaço desta pasta", "Caminho do painel ativo"});
+        {"Nova pasta", "Espaço total e livre do microSD", "Analisar espaço desta pasta", "Caminho do painel ativo", "Alternar microSD / Google Drive neste painel"});
     if (choice == 0) doMkdir();
     else if (choice == 1) {
         refreshSpace();
@@ -1905,6 +1917,7 @@ static void filesAndFoldersMenu() {
     }
     else if (choice == 2) doSpaceAnalyzer();
     else if (choice == 3) message("Pasta atual", panes[active].path);
+    else if (choice == 4) toggleDrive();
 }
 // Painel de acesso comum. Ainda preserva filas locais e operações remotas distintas;
 // não anuncia indevidamente uma fila unificada que o motor ainda não possui.
@@ -1929,90 +1942,39 @@ static void organizationMenu() {
     else if (choice == 1) favMenu();
     else if (choice == 2) reloadBoth();
 }
-static int qrHexNibble(char ch) {
-    if (ch >= '0' && ch <= '9') return ch - '0';
-    if (ch >= 'A' && ch <= 'F') return 10 + (ch - 'A');
-    if (ch >= 'a' && ch <= 'f') return 10 + (ch - 'a');
-    return 0;
-}
-static void drawDonationQr(int x, int y, int scale) {
-    // Quiet zone de 4 módulos. Não redesenhar nem estilizar os módulos de dados.
-    constexpr int border = 4;
-    constexpr int n = sfm::ui::pix::kSize;
-    fillRect(x, y, (n + 2 * border) * scale, (n + 2 * border) * scale, Col{255, 255, 255, 255});
-    for (int row = 0; row < n; ++row) {
-        for (int column = 0; column < n; ++column) {
-            int nibble = qrHexNibble(sfm::ui::pix::kRows[row][column / 4]);
-            if ((nibble >> (3 - column % 4)) & 1)
-                fillRect(x + (column + border) * scale, y + (row + border) * scale,
-                         scale, scale, Col{0, 0, 0, 255});
-        }
-    }
-}
-static void drawOfficialIcon(int x, int y, int scale) {
-    // Reproduz a miniatura da arte oficial existente no assets/icon.jpg.
-    // Os pixels são cores reais da arte, sem busca em rede.
-    constexpr int n = sfm::ui::brand::kIconSize;
-    const char* alphabet = sfm::ui::brand::kAlphabet;
-    const char* palette = sfm::ui::brand::kPaletteHex;
-    for (int row = 0; row < n; ++row) {
-        for (int column = 0; column < n; ++column) {
-            const char* colorIndex = std::strchr(alphabet, sfm::ui::brand::kRows[row][column]);
-            if (!colorIndex) continue;
-            int index = (int)(colorIndex - alphabet);
-            const char* value = palette + index * 6;
-            auto component = [&](int offset) -> uint8_t {
-                int hi = qrHexNibble(value[offset]);
-                int lo = qrHexNibble(value[offset + 1]);
-                return (uint8_t)((hi << 4) | lo);
-            };
-            fillRect(x + column * scale, y + row * scale, scale, scale,
-                Col{component(0), component(2), component(4), 255});
-        }
-    }
-}
 static void aboutScreen() {
-    // Sobre contém a doação voluntária, sem menção a Pix no menu Sistema.
     for (;;) {
+        if (g_quit || g_session.menuPending) return;
         if (!appletMainLoop()) { g_quit = true; return; }
         padUpdate(&pad);
         updateTouch();
         const u64 pressed = padGetButtonsDown(&pad);
+        if (pressed & HidNpadButton_Plus) { g_session.menu(); return; }
+        if ((pressed & HidNpadButton_Minus) && requestExit()) return;
         if (pressed & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_X)) return;
-        if (tp.released && !tp.moved && inRect(tp.x, tp.y, 890, 614, 240, 46)) return;
+        if (tp.released && !tp.moved && inRect(tp.x, tp.y, 918, 637, 240, 46)) return;
         drawMain();
-        fillRect(0, 0, W, H, Col{0, 0, 0, 190});
-        fillRound(66, 32, 1148, 650, 20, C_PANEL);
-        fillRect(66, 32, 7, 650, C_ACC);
-        drawText(fL, "Sobre o Switch File Manager", 112, 68, C_TXT);
-        drawText(fM, "Gerenciador de arquivos para Nintendo Switch", 112, 130, C_TXT, 585);
-        drawText(fS, "Dois painéis | microSD | FTP | Google Drive experimental", 112, 172, C_DIM, 605);
-        drawText(fS, "Desenvolvedor: TemudjinBR", 112, 223, C_TXT);
-        drawText(fS, std::string("Versão: ") + SFM_VERSION + " (experimental)", 112, 256, C_TXT);
-        drawText(fS, std::string("Build: ") + SFM_BUILD_ID, 112, 288, C_DIM, 590);
-        drawText(fS, "github.com/TemudjinBR/switch-file-manager", 112, 331, C_ACC, 595);
-        fillRect(112, 384, 575, 2, C_PAN2);
-        drawText(fM, "Apoie o desenvolvimento", 112, 405, C_TXT);
-        drawText(fS, "Sua contribuição voluntária ajuda a manter", 112, 451, C_TXT);
-        drawText(fS, "o projeto ativo e incentiva novas melhorias.", 112, 481, C_TXT);
-        drawText(fS, "O aplicativo continua gratuito.", 112, 536, C_GRN);
-        drawText(fS, "Obrigado por apoiar o Switch File Manager!", 112, 577, C_DIM);
-        drawOfficialIcon(884, 42, 3);
-        drawDonationQr(803, 194, 5);
-        drawText(fS, "Escaneie e escolha o valor", 955, 513, C_TXT, 320, 2);
-        drawText(fS, "de sua contribuição.", 955, 544, C_TXT, 320, 2);
-        drawText(fS, "Beneficiário: Flavio Hessnauer Filho", 955, 582, C_DIM, 370, 2);
-        fillRound(890, 614, 240, 46, 10, C_ACCD);
-        drawText(fM, "B  Voltar", 1010, 622, C_TXT, 230, 2);
+        drawAbout({SFM_VERSION, SFM_BUILD_ID,
+            g_updates.prefs().channel == "stable" ? "ESTÁVEL" : "EXPERIMENTAL"});
         present();
     }
 }
 static void systemMenu() {
-    const int choice = modal("Sistema", "",
-        {"Atualizações", "Configurações do atualizador", "Versão e diagnósticos", "Sobre"});
-    if (choice == 0 || choice == 1) updatesMenu();
-    else if (choice == 2) buildMenu();
-    else if (choice == 3) aboutScreen();
+    const int choice = modal("Sistema", "", {"Atualizações", "Versão e diagnósticos"});
+    if (choice == 0) updatesMenu();
+    else if (choice == 1) buildMenu();
+}
+static void globalMenu() {
+    g_session.menuPending = false;
+    g_hint.clear();
+    const std::vector<std::string> sections(nav::sections.begin(), nav::sections.end());
+    const int choice = modal("Menu — v" SFM_VERSION, "", sections);
+    if (choice >= 0) sfm_diag::write("MENU", sections[choice]);
+    if (choice == 0) filesAndFoldersMenu();
+    else if (choice == 1) transfersMenu();
+    else if (choice == 2) organizationMenu();
+    else if (choice == 3) systemMenu();
+    else if (choice == 4) aboutScreen();
 }
 static void actionsMenu() {
     Pane& pane = panes[active];
@@ -2028,24 +1990,22 @@ static void actionsMenu() {
     state.cloud = pane.drive;
     auto commands = sfm::ui::actions::contextualCommands(state);
     if (commands.empty()) {
-        const std::vector<std::string> sections = {
-            "Arquivos e pastas", "Transferências", "Organização", "Sistema"
-        };
-        const int choice = modal("Ações — v" SFM_VERSION, "", sections);
-        if (choice >= 0) sfm_diag::write("ACAO", sections[choice]);
-        if (choice == 0) filesAndFoldersMenu();
-        else if (choice == 1) transfersMenu();
-        else if (choice == 2) organizationMenu();
-        else if (choice == 3) systemMenu();
+        g_hint = "Selecione um arquivo ou pasta";
         return;
     }
+    const std::string originalPath = pane.path;
+    const auto originalMarks = pane.marks;
+    const int originalCursor = pane.cur;
     std::vector<std::string> labels;
-    for (auto command : commands) labels.push_back(contextualLabel(command));
+    for (auto command : commands)
+        labels.push_back(command == sfm::ui::actions::Command::ExtractZip && state.selected > 1
+            ? "Extrair ZIPs" : contextualLabel(command));
     int choice = modal("Ações — seleção", std::to_string(state.selected) + " item(ns) selecionado(s)", labels);
     if (choice < 0) return;
     // Um reload remoto durante o diálogo pode invalidar a seleção. Nunca aplicar
     // operações ao item que tomou a posição do cursor por acidente.
-    if ((!pane.contextFocused && pane.marks.empty()) || pane.drive != state.cloud) {
+    if ((!pane.contextFocused && pane.marks.empty()) || pane.drive != state.cloud ||
+        pane.path != originalPath || pane.marks != originalMarks || pane.cur != originalCursor) {
         message("Seleção alterada", "A lista mudou. Selecione novamente antes de executar.");
         return;
     }
@@ -2069,15 +2029,18 @@ static void actionsMenu() {
     }
 }
 
-static void dispatch(int id) {
-    switch (id) {
-        case B_OPEN: openCur(); break;
-        case B_UP: goUp(); break;
-        case B_MARK: toggleMark(); break;
-        case B_ACT: actionsMenu(); break;
-        case B_PANE: active = 1 - active; break;
-        case B_CLOUD: toggleDrive(); break;
-        case B_EXIT: g_quit = true; break;
+static void dispatch(nav::Action action) {
+    switch (action) {
+        case nav::Action::Open: openCur(); break;
+        case nav::Action::Up: goUp(); break;
+        case nav::Action::Mark: toggleMark(); break;
+        case nav::Action::Context: actionsMenu(); break;
+        case nav::Action::Pane: active = 1 - active; break;
+        case nav::Action::Menu: globalMenu(); break;
+        case nav::Action::Exit: requestExit(); break;
+        case nav::Action::Selection: selectionMenu(); break;
+        case nav::Action::Properties: doProperties(); break;
+        case nav::Action::None: break;
     }
 }
 
@@ -2095,21 +2058,10 @@ static void handleInput() {
     u64 d = padGetButtonsDown(&pad);
     u64 h = padGetButtons(&pad);
 
-    if (d & HidNpadButton_Plus) { g_quit = true; return; }
-    if (d & HidNpadButton_A) { dispatch(B_OPEN); return; }
-    if (d & HidNpadButton_B) { dispatch(B_UP); return; }
-    if (d & HidNpadButton_Y) {
-        if (h & HidNpadButton_ZL) selectionMenu(); // seleção avançada sem poluir o menu X
-        else dispatch(B_MARK);
-        return;
-    }
-    if (d & HidNpadButton_X) {
-        if (h & HidNpadButton_ZL) doProperties(); // atalho para propriedades detalhadas
-        else dispatch(B_ACT);
-        return;
-    }
-    if (d & (HidNpadButton_L | HidNpadButton_R)) { dispatch(B_PANE); return; }
-    if (d & HidNpadButton_Minus) { dispatch(B_CLOUD); return; }
+    const nav::Buttons keys{HidNpadButton_A, HidNpadButton_B, HidNpadButton_X, HidNpadButton_Y,
+        HidNpadButton_L, HidNpadButton_R, HidNpadButton_ZL, HidNpadButton_Plus, HidNpadButton_Minus};
+    const auto action = nav::buttons(d, h, keys);
+    if (action != nav::Action::None) { g_hint.clear(); dispatch(action); return; }
     if (d & HidNpadButton_Left) active = 0;
     if (d & HidNpadButton_Right) active = 1;
     if (d & HidNpadButton_ZL) movePane(panes[active], -ROWS);
@@ -2138,9 +2090,8 @@ static void handleInput() {
         p.clamp();
     }
     if (tp.released && !tp.moved) {
-        for (int i = 0; i < NBTN; i++) {
-            if (inRect(tp.x, tp.y, 22 + i * 178, 646, 168, 58)) { dispatch(BTNS[i].id); return; }
-        }
+        const auto action = nav::touch(tp.x, tp.y);
+        if (action != nav::Action::None) { g_hint.clear(); dispatch(action); return; }
         if (tp.y >= PANE_Y && tp.y < PANE_Y + PANE_H) {
             int pi = tp.x < 640 ? 0 : 1;
             Pane& p = panes[pi];
@@ -2189,6 +2140,7 @@ int main(int argc, char** argv) {
             updateTouch();
             pump();
             handleInput();
+            if (g_session.menuPending && !g_quit) globalMenu();
             static unsigned lastFtpChanges = 0;
             unsigned ftpChanges = wifi::fileChanges();
             if (ftpChanges != lastFtpChanges) {

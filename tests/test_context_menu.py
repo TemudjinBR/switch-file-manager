@@ -37,7 +37,7 @@ int main() {
     assert(zips.size() == 5 && zips.back() == Command::ExtractZip);
 
     auto drive = contextualCommands({true, 1, 0, true, true});
-    assert(drive.size() == 5 && drive.back() == Command::Rename);
+    assert(drive.size() == 4 && drive.back() == Command::Rename);
 
     auto markedWithCursor = contextualCommands({false, 2, 2, false, false});
     assert(markedWithCursor.size() == 5);
@@ -62,15 +62,16 @@ class ContextMenuTests(unittest.TestCase):
 
     def test_no_old_menu_and_pix_only_in_about(self):
         text = (ROOT / "src/app/main.cpp").read_text(encoding="utf-8")
-        self.assertIn('"Arquivos e pastas", "Transferências", "Organização", "Sistema"', text)
+        about = (ROOT / "src/ui/about_view.cpp").read_text(encoding="utf-8")
         self.assertIn("contextualCommands(state)", text)
+        self.assertIn("static void globalMenu()", text)
         self.assertIn("static void aboutScreen()", text)
-        self.assertIn("drawDonationQr(803, 194, 5)", text)
         self.assertNotIn('"Compactar e extrair (ZIP)..."', text)
-        self.assertIn("drawOfficialIcon(884, 42, 3)", text)
-        self.assertTrue((ROOT / "include/ui/official_icon.h").exists())
+        self.assertIn("blitRgb24(112, 121", about)
+        self.assertIn("blitRgb24(112, 438", about)
         self.assertNotIn('"Ferramentas"', text)
-        self.assertIn('{"Atualizações", "Configurações do atualizador", "Versão e diagnósticos", "Sobre"}', text)
+        self.assertNotIn('"Configurações do atualizador"', text)
+        self.assertIn('{"Atualizações", "Versão e diagnósticos"}', text)
 
     def test_pix_matrix(self):
         header = (ROOT / "include/ui/pix_qr.h").read_text(encoding="utf-8")
