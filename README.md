@@ -19,7 +19,8 @@
   <a href="#funcionalidades">Funcionalidades</a> ·
   <a href="#como-instalar">Instalação</a> ·
   <a href="docs/README.md">Documentação</a> ·
-  <a href="https://github.com/TemudjinBR/switch-file-manager/pull/1">Desenvolvimento</a>
+  <a href="https://github.com/TemudjinBR/switch-file-manager/pull/3">Candidata (PR #3)</a> ·
+  <a href="https://github.com/TemudjinBR/switch-file-manager/pull/1">Base (PR #1)</a>
 </p>
 
 ---
@@ -191,7 +192,7 @@ HTTPS verifica certificados/nome/data. SHA-256 e metadados vinculam o NRO e o au
 ## Canais e downloads
 
 - **Canal estável: v0.10.7**, Release pública legada, cuja homologação não foi auditada nesta missão; não equivale a homologar as funções novas desta branch. [Releases públicas](https://github.com/TemudjinBR/switch-file-manager/releases/latest).
-- **Candidata 0.10.14 experimental:** branch `codex/menu-global-sobre-0-10-14`, derivada do [PR #2](https://github.com/TemudjinBR/switch-file-manager/pull/2); base preservada no [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) e [artefatos Actions](https://github.com/TemudjinBR/switch-file-manager/actions/workflows/build.yml). O ZIP externo inclui NRO, auxiliar, ZIP para SD, manifestos e checksums.
+- **Candidata 0.10.14 experimental:** [PR #3](https://github.com/TemudjinBR/switch-file-manager/pull/3), branch `codex/menu-global-sobre-0-10-14`, derivada do [PR #2](https://github.com/TemudjinBR/switch-file-manager/pull/2); base preservada no [PR #1](https://github.com/TemudjinBR/switch-file-manager/pull/1) e [artefatos Actions](https://github.com/TemudjinBR/switch-file-manager/actions/workflows/build.yml). O ZIP externo inclui NRO, auxiliar, ZIP para SD, manifestos e checksums.
 - A checagem no console usa **Releases públicas com update.json**, não artefatos privados do Actions. Pré-Releases experimentais podem ser disponibilizadas pelo workflow manual; não são oferecidas como estáveis. Nesta missão não se acionou publicação ou merge.
 
 Cada número X.Y.Z é único. Uma pré-Release publicada não é convertida automaticamente em estável; outra versão e homologação são necessárias. Publicação estável exige revisão, checks, proteção da main e aprovação física do commit/binários exatos. [Processo de promoção](docs/PROMOCAO_E_RELEASES.md).
@@ -214,7 +215,7 @@ Sem datas prometidas. O [roadmap](docs/ROADMAP.md) detalha prioridades e limites
 2. **Baixe `SwitchFileManager.nro`** e o checksum correspondente. A Release v0.10.7 oferece o NRO avulso; não pressupõe o ZIP de distribuição criado no desenvolvimento atual.
 3. **Confira o SHA-256** com uma ferramenta de confiança e coloque o NRO em `sdmc:/switch/Switch File Manager/` no microSD. Se estiver usando o ZIP de teste, extraia sua pasta `switch` na raiz do cartão.
 4. **Abra pelo Homebrew Menu** em um console desbloqueado com Atmosphère. Preserve as configurações já existentes em `switch/switch-manager`.
-5. **Confira a versão do arquivo baixado** pela tag da Release, execução de Actions e metadados NACP apresentados pelo launcher quando disponíveis. O log de início também registra a versão. **O cabecalho mostra versao e build. Acoes → Versao e diagnostico do NRO mostra o caminho em execucao e permite conferir copias no SD, sem exclui-las.**
+5. **Confira a versão do arquivo baixado** pela tag da Release, execução de Actions e metadados NACP apresentados pelo launcher quando disponíveis. O log de início também registra a versão. **O cabecalho mostra versao e build. + Menu → Sistema → Versão e diagnósticos mostra o caminho em execucao e permite conferir copias no SD, sem exclui-las.**
 
 Para comparar hashes no terminal: `sha256sum SwitchFileManager.nro`. A verificação ajuda a conferir o download, mas não substitui os testes no console.
 

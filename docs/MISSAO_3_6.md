@@ -1,6 +1,6 @@
 # Missão 3.6 — menu global, atalhos, Sobre e ícone
 
-Candidata **0.10.14 experimental**, na branch `codex/menu-global-sobre-0-10-14`, baseada no PR #2 (`02d6b065bb20a888452d7f380fb96f84f2abb402`), preservando o PR #1 (`84e3f769e69380bfae74f7a23a0e3c67f7a9188e`). **PENDENTE DE TESTE FÍSICO no Switch Lite**. Sem merge, alteração da main ou publicação de Release.
+Candidata **0.10.14 experimental**, [PR #3](https://github.com/TemudjinBR/switch-file-manager/pull/3), na branch `codex/menu-global-sobre-0-10-14`, baseada no PR #2 (`02d6b065bb20a888452d7f380fb96f84f2abb402`), preservando o PR #1 (`84e3f769e69380bfae74f7a23a0e3c67f7a9188e`). **PENDENTE DE TESTE FÍSICO no Switch Lite**. Sem merge, alteração da main ou publicação de Release.
 
 ## Causas verificadas e mudança
 

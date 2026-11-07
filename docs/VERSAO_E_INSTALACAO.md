@@ -18,7 +18,7 @@ A ferramenta percorre nomes `.nro`/`.NRO`, inclusive diretórios ocultos, sem se
 
 ## Instalação pelo Android
 
-1. Baixar **SwitchFileManager-validado** em Artifacts da execução verde do **novo PR da Missão 3.6**, conferindo SHA da execução. Os artefatos antigos dos PRs #1/#2 não contêm esta correção. GitHub pode exigir login normal para baixar; não criar/fornecer token pessoal.
+1. Baixar **SwitchFileManager-validado** em Artifacts da execução verde do [**PR #3 da Missão 3.6**](https://github.com/TemudjinBR/switch-file-manager/pull/3), conferindo SHA da execução. Os artefatos antigos dos PRs #1/#2 não contêm esta correção. GitHub pode exigir login normal para baixar; não criar/fornecer token pessoal.
 2. Extrair o ZIP externo de Artifacts e depois **SwitchFileManager-v0.10.14.zip**. Ler LEIA-ME, manifest.json e SHA256SUMS. O NRO avulso é idêntico ao incorporado no ZIP.
 3. Fechar o aplicativo. Fazer backup somente dos executáveis anteriores identificados. Copiar a pasta `switch` do pacote para a **raiz do microSD** usando o gerenciador Android e leitor SD. Não copiar a pasta externa do ZIP nem criar um nível extra de diretório.
 4. Conferir os dois destinos exatos:
