@@ -8,7 +8,7 @@ Na v0.10.8 foi relatada **“Falha ao salvar login no cartão SD.”** depois da
 
 ## Menu Google Drive e conta
 
-Acesse **X → Ações → Google Drive e conta**. O modal existente aceita ↑/↓, ZL/ZR, A/B, toque nas opções e arrasto para rolar.
+Acesse **+ Menu → Transferências → Google Drive e conta**. O modal existente aceita ↑/↓, ZL/ZR, A/B, toque nas opções e arrasto para rolar.
 
 | Opção | Comportamento |
 | --- | --- |

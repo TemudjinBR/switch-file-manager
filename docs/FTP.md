@@ -5,7 +5,7 @@ Estado: **implementado**, com testes de integração no host. Desempenho e estab
 ## Conectar
 
 1. Conecte console e cliente à mesma rede local confiável.
-2. Abra **X → Ações → Transferência Wi-Fi** e confirme a ativação.
+2. Abra **+ Menu → Transferências → Servidor FTP (Wi-Fi)** e confirme a ativação.
 3. No cliente FTP, use o endereço exibido pelo aplicativo, com **porta 2121**. O login é anônimo; não há senha que proteja o acesso.
 4. Mantenha o servidor ativo durante a operação. Para encerrar, volte ao mesmo menu e escolha **Parar servidor FTP**; o encerramento do aplicativo também chama a parada.
 

@@ -96,3 +96,9 @@ Isso não transforma Drive numa API multithread: estados JSON/OAuth/diagnóstico
 ## Atualizador — Missão 3.3
 
 `src/updates/update_core.cpp` concentra parser/manifesto, SHA-256 incremental e transação; `update_service.cpp` coordena preferências/worker; `network/update_http.cpp` oferece HTTPS separado do OAuth. Cada chamada mantém posse Updates no runtime e contexto SSL próprio; não chama gdrive nem desenha. A UI lê snapshots protegidos por mutex. `tools/updater/updater_main.cpp` é outro NRO, com o mesmo build, que instala após o principal sair. Makefile gera os dois executáveis em diretórios separados e inclui o auxiliar na identidade dos fontes. [Transação e confiança](ATUALIZACOES.md).
+
+## Interface na 0.10.14
+
+A política [navigation.h](../include/ui/navigation.h) separa menu global/contextual/saída e fornece o rodapé físico/tátil; libnx injeta seus bits reais no roteador. `Session` mantém pedido de menu, confirmação de saída e cancelamento cooperativo, sem manipular a seleção. Fluxos síncronos deferem o menu até retorno seguro; saída aguarda workers/FTP e libera sockets pelo ciclo normal.
+
+[about_view.cpp](../src/ui/about_view.cpp) usa blit RGB888 do renderer: 196.608 bytes de arte em readonly e cache RGB do QR original de 11.163 bytes. Sem paleta, decodificação JPEG por quadro ou nova biblioteca runtime. HOST_TEST troca somente fonte/framebuffer para testar o desenho real; a fonte Nintendo e o timing precisam do Lite.

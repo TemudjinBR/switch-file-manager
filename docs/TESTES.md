@@ -174,3 +174,11 @@ SFM_TEST_TSAN=1 TSAN_OPTIONS=halt_on_error=1:exitcode=66 python3 -m unittest dis
 ```
 
 Isso instrumenta C++/threads de teste e não o SSL/firmware do Switch. O auxiliar é exercitado por sua biblioteca de transação em E/S temporária; envSetNextLoad e sua UI de console dependem da matriz física.
+
+## Regressões da Missão 3.6
+
+[Relatório](MISSAO_3_6.md) e [checklist físico](MENU_CONTEXTUAL.md#checklist-no-switch-lite). `tests/test_navigation.py` compila a política real de botões/rodapé e o modelo contextual: ambos os painéis, SD/Drive, 0/1/vários alvos, combinações, limites de toque e sessão. A confirmação/recusa de saída também passa pelo motor real de cópia com arquivos fictícios, verificando cancelamento e preservação. As asserções de integração/ordem de shutdown complementam esses testes; não simulam integralmente a UI libnx.
+
+O mesmo renderer/Sobre compila no host com DejaVu Sans como fonte de QA (Ubuntu padrão) e framebuffer em memória. São conferidos recorte/escala do blit, todos os pixels RGB do ícone e módulos do QR na posição final, além da igualdade entre SVG e matriz originais. Não exige Pillow/zxing no CI. Regeneração opcional: `python3 scripts/generate_about_icon.py --check` com Pillow; decodificação QR e prévia visual foram feitas no ambiente de desenvolvimento, sem pagamento.
+
+Conservar todos os testes antigos, atualizando expectativas dos atalhos substituídos. Rodar `bash scripts/build.sh` para suíte host, NROs reais, suíte com NRO e ZIP. Testar alterações somente em fixtures; nunca em dados do proprietário. Homologação física continua pendente, inclusive applet/memória completa, fonte/touch real, FTP/Drive e saída durante E/S SD.

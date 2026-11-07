@@ -1,7 +1,7 @@
 {
   "config": {
     "MD013": false,
-    "MD033": {"allowed_elements": ["p", "img", "h1", "strong", "br", "a"]},
+    "MD033": {"allowed_elements": ["p", "img", "h1", "strong", "br", "a", "small"]},
     "MD041": false
   }
 }

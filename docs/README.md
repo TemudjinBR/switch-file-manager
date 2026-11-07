@@ -1,6 +1,6 @@
 # Documentação do Switch File Manager
 
-A apresentação oficial está no [README principal](../README.md). A revisão do PR #1 usa **0.10.13 experimental**; a última Release pública verificada em 05/11/2026 é **v0.10.7**. Recursos implementados, resultados no host e validação física são classificados separadamente.
+A apresentação oficial está no [README principal](../README.md). A candidata da Missão 3.6 usa **0.10.14 experimental**, baseada nos PRs #1 e #2 preservados; a última Release pública verificada em 05/11/2026 é **v0.10.7**. Recursos implementados, resultados no host e validação física são classificados separadamente.
 
 ## Para usar o aplicativo
 
@@ -23,10 +23,11 @@ A apresentação oficial está no [README principal](../README.md). A revisão d
 | Entrada para pessoa ou IA retomar o projeto | [Referência](REFERENCIA.md) |
 | Módulos e dependências | [Arquitetura](ARQUITETURA.md) |
 | Comandos completos, cobertura e critérios de Release | [Testes](TESTES.md) |
-| Evidências da revisão atual | [Relatório de validação](RELATORIO_VALIDACAO.md) |
+| Evidências da Missão 3.6 e prévias host | [Relatório 3.6](MISSAO_3_6.md) |
+| Evidências anteriores da Missão 3.3 | [Relatório de validação](RELATORIO_VALIDACAO.md) |
 | Base da reorganização e complemento da Missão 2 | [Auditoria](AUDITORIA.md) |
 | Implementação futura, sem promessas de prazo | [Roadmap](ROADMAP.md) |
-| Mudanças por versão | [Changelog](../CHANGELOG.md) e [notas 0.10.13](../release-notes/v0.10.13.md) |
+| Mudanças por versão | [Changelog](../CHANGELOG.md) e [notas 0.10.14](../release-notes/v0.10.14.md) |
 | Marca e ícone que também entra no NRO | [Identidade oficial](../assets/branding/README.md) |
 | Bibliotecas, créditos e licenças preservadas | [Terceiros](../third_party/README.md) |
 | Histórico de apresentação e limitações externas da Missão 2 | [Relatório de entrega](MISSAO_2.md) |

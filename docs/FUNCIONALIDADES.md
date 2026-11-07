@@ -24,27 +24,19 @@ O inventário de menus foi consolidado na **0.10.8 experimental**, revisão `973
 | Armazenamento/propriedades — implementado | `refreshSpace`, `propsText`, `doProperties`, `calcTree`, `doSpaceAnalyzer` em main. Total/livre/utilização SD, propriedades individuais e agregadas, arquivos/pastas, data quando disponível, até nove maiores itens imediatos. Totais podem ser incompletos; profundidade limitada no cálculo de propriedades. |
 | Homebrew NRO — implementado | `endsWithNro`, `openCur`, `launchNro`, `envHasNextLoad`, `envSetNextLoad`. Extensão NRO local, confirmação e saída para o programa quando suportado. Outros arquivos mostram informações, sem visualizador universal ou instalador de jogos. |
 | Proteções — implementado | [path_policy.cpp](../src/security/path_policy.cpp), `doCopyMove`, `doDelete`, [operations.cpp](../src/storage/operations.cpp), verificações do FTP/ZIP. Confirmações, nomes/caminhos, destinos exclusivos nos fluxos protegidos, conferência do fallback e erros explícitos; não há garantia absoluta ou transação global. |
-| Diagnósticos — implementado | [logger.cpp](../src/diagnostics/logger.cpp), chamadas `sfm_diag::write` no app/FTP/renderer. Início/fim, menu Ações e eventos/erros instrumentados, timestamp, mutex, rotação próxima de 1 MiB, retorno de falha e stderr. Não há tela própria de diagnóstico nem cobertura de todo erro de todos os módulos. |
+| Diagnósticos — implementado | [logger.cpp](../src/diagnostics/logger.cpp), chamadas `sfm_diag::write` no app/FTP/renderer. Início/fim, menu Ações e eventos/erros instrumentados, timestamp, mutex, rotação próxima de 1 MiB, retorno de falha e stderr. Versão e diagnósticos mostra caminho, NACP/build e SHA-256 de cópias NRO selecionadas, sem exclusão automática; não cobre todo erro de todos os módulos. |
 
 As funções da aplicação mencionadas estão em [src/app/main.cpp](../src/app/main.cpp). Os guias de [controles](CONTROLES.md), [armazenamento](ARMAZENAMENTO.md), [Drive](GOOGLE_DRIVE.md), [FTP](FTP.md) e [ZIP](ZIP.md) detalham o comportamento e suas restrições.
 
-## Menu contextual — patch sobre 0.10.13
+## Menu global e contextual — 0.10.14
 
-A interface candidata agora diferencia quatro categorias gerais (sem seleção)
-das operações diretas sobre arquivos/pastas. O submenu Ferramentas foi
-eliminado. Compactar e Extrair são comandos contextuais específicos. A
-lista completa e o teste físico recomendado estão em
-[MENU_CONTEXTUAL.md](MENU_CONTEXTUAL.md).
+**+** abre sempre Arquivos e pastas → Transferências → Organização → Sistema → Sobre, sem depender de foco ou marcações. **X** oferece só as ações do alvo; sem alvo, orienta selecionar. **−** confirma saída segura. [Inventário antes/depois, opções e checklist](MENU_CONTEXTUAL.md).
 
-**Sem seleção:** Arquivos e pastas → Transferências → Organização → Sistema.
+Com um item local: Copiar → Mover → Selecionar tudo → Excluir → Renomear → Compactar em ZIP ou Extrair ZIP. Com vários: Desmarcar tudo e sem Renomear. No Drive, Mover e ZIP não são oferecidos. Seleção avançada e propriedades permanecem em ZL+Y e ZL+X.
 
-**Com item:** Copiar → Mover → Selecionar tudo → Excluir → Renomear →
-Compactar em ZIP **ou** Extrair ZIP, conforme tipo e local. Seleção de
-vários itens troca Selecionar tudo por Desmarcar tudo e remove Renomear.
+Sistema mantém Atualizações e Versão e diagnósticos. Configuração do atualizador permanece na própria tela de Atualizações, sem entrada duplicada. Sobre fica diretamente na raiz e usa arte oficial em RGB888 nativo; apoio opcional aparece abaixo das informações do aplicativo.
 
-**Transição:** as filas local/FTP/Drive permanecem independentes,
-portanto o submenu Transferências é somente um centro de acesso/resumo,
-não uma fila de execução tecnicamente unificada.
+A alternância de armazenamento está em Arquivos e pastas e na conta Drive. Transferências apresenta acessos reais à fila local, FTP e Drive, que continuam independentes. Não há implementação nova de fila unificada, gerenciador universal de arquivos remotos ou retomada de uploads.
 
 ## Mapa histórico dos menus anteriores à reorganização
 
@@ -129,7 +121,7 @@ Abrir um ZIP também oferece Cancelar, Extrair aqui, Extrair no outro painel e I
 - Esquecer esta conta: confirmação separada; bloqueia restauração antes de remover apenas cópias atribuídas à conta, informando falhas/resíduos. Não apaga arquivos no Drive nem revoga no Google.
 - Voltar: fecha o menu. No diálogo de login, B/toque cancela; o navegador oferece retry local se a gravação falhar.
 
-O menu usa o modal existente para controles físicos, toque e rolagem. Estado: Conectado, Desconectado, Autorização necessária, Autorização expirada ou inválida, Erro de rede ou Erro de armazenamento no SD. Nome exibido quando `about.user.displayName` estiver disponível. A identificação não entra nos logs. O menu Ações também mostra `SFM_VERSION`.
+O menu usa o modal existente para controles físicos, toque e rolagem. Estado: Conectado, Desconectado, Autorização necessária, Autorização expirada ou inválida, Erro de rede ou Erro de armazenamento no SD. Nome exibido quando `about.user.displayName` estiver disponível. A identificação não entra nos logs. O cabeçalho e Sobre também mostram `SFM_VERSION`.
 
 `gdrive.cpp`: `loadAccount`, `storeAccount`, `restoreLogin`, `setKeepConnected`, `forgetAccount`, `loginServerStop`. `credential_store.cpp`: transações sem sobrescrita, recuperação e exclusão seletiva explícita. `socket_runtime.cpp`: posse compartilhada por Drive/FTP. A fila existente continua somente local; a UI não permite gerenciar contas no meio de uma transferência remota síncrona.
 

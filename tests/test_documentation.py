@@ -56,14 +56,14 @@ class DocumentationTests(unittest.TestCase):
         inventory = (ROOT / 'docs/FUNCIONALIDADES.md').read_text()
         context = (ROOT / 'docs/MENU_CONTEXTUAL.md').read_text()
 
-        # Categorias gerais apenas quando não há seleção explícita.
+        # Menu global independente do foco; modelo compartilhado com a UI.
         self.assertIn('contextualCommands(state)', code)
         self.assertIn('static void actionsMenu()', code)
-        block = code[code.index('static void actionsMenu()'):]
-        initializer = re.search(r'const std::vector<std::string>\s+sections\s*=\s*\{(.*?)\};', block, re.S)
+        navigation = (ROOT / 'include/ui/navigation.h').read_text()
+        initializer = re.search(r'sections\s*=\s*\{(.*?)\};', navigation, re.S)
         self.assertIsNotNone(initializer)
         categories = re.findall(r'"([^"\\]+)"', initializer[1])
-        self.assertEqual(categories, ['Arquivos e pastas', 'Transferências', 'Organização', 'Sistema'])
+        self.assertEqual(categories, ['Arquivos e pastas', 'Transferências', 'Organização', 'Sistema', 'Sobre'])
         self.assertNotIn('Ferramentas', categories)
         for category in categories:
             self.assertIn(category, context)

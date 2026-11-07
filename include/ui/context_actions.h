@@ -15,13 +15,13 @@ struct Context {
 
 inline std::vector<Command> contextualCommands(const Context& context) {
     if ((!context.focused && context.marked == 0) || context.selected == 0)
-        return {}; // menu geral
+        return {}; // sem alvo; não abrir menu global
     std::vector<Command> commands = {
         Command::Copy,
-        Command::Move,
         context.marked > 1 ? Command::ClearAll : Command::SelectAll,
         Command::Delete
     };
+    if (!context.cloud) commands.insert(commands.begin()+1, Command::Move);
     if (context.selected == 1)
         commands.push_back(Command::Rename);
     if (!context.cloud)

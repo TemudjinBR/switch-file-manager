@@ -2,9 +2,9 @@
 
 ## Estado e uso
 
-Implementado e testável no host; **sem homologação física**. A instalação inicial da candidata continua pelo [pacote Android](VERSAO_E_INSTALACAO.md#candidata-01013-e-auxiliar). Nenhuma Release é publicada nesta missão. Enquanto o repositório não tiver Releases compatíveis com `update.json`, a consulta não encontrará uma candidata instalável. A versão pública anterior pode não ter esse manifesto.
+Implementado e testável no host; **sem homologação física**. A instalação inicial da candidata continua pelo [pacote Android](VERSAO_E_INSTALACAO.md#instalação-pelo-android). Nenhuma Release é publicada nesta missão. Enquanto o repositório não tiver Releases compatíveis com `update.json`, a consulta não encontrará uma candidata instalável. A versão pública anterior pode não ter esse manifesto.
 
-Em **Ações → Atualizações**, por controles ou toque:
+Em **+ Menu → Sistema → Atualizações**, por controles ou toque:
 
 1. Conferir versão instalada, canal e estado. O diálogo atualiza estado/bytes enquanto o worker trabalha; notas têm páginas próprias.
 2. ESTÁVEL é o padrão. Mudar para EXPERIMENTAL exige escolha no diálogo que informa ausência de homologação.

@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || inputs.candidate_sha || github.sha }}
+          ref: ${{ inputs.ref || inputs.candidate_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Testes automatizados no host
         run: python3 tests/run.py
@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || inputs.candidate_sha || github.sha }}
+          ref: ${{ inputs.ref || inputs.candidate_sha || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validar contexto Git do contêiner
@@ -70,6 +70,11 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git -C "$GITHUB_WORKSPACE" rev-parse --show-toplevel
           git -C "$GITHUB_WORKSPACE" rev-parse HEAD
+      - name: Instalar fonte apenas para testes de renderização no host
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends fonts-dejavu-core
       - name: Compilar, validar e empacotar
         env:
           SFM_CHANNEL: ${{ inputs.channel || 'experimental' }}

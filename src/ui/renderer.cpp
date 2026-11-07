@@ -1,6 +1,12 @@
 #include "ui/renderer.h"
 #include "sfm_diag.h"
+#ifndef HOST_TEST
 #include <switch.h>
+#else
+#include <fstream>
+#include <iterator>
+#include <vector>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -10,8 +16,10 @@
 #define STBTT_STATIC
 #include "stb_truetype.h"
 namespace sfm::ui {
+#ifndef HOST_TEST
 static Framebuffer g_fb;
 static bool framebufferReady = false, plReady = false;
+#endif
 static uint32_t* canvas = nullptr;
 Fnt fS, fM, fL;
 static stbtt_fontinfo g_info;
@@ -53,6 +61,17 @@ static void hspan(int y, int xa, int xb, Col c) {
 
 void fillRect(int x, int y, int w, int h, Col c) {
     for (int j = y; j < y + h; j++) hspan(j, x, x + w, c);
+}
+
+void blitRgb24(int x, int y, int w, int h, const uint8_t* rgb, int scale) {
+    if (!canvas || !rgb || w<=0 || h<=0 || scale<=0) return;
+    for (int yy=std::max(y, clipY0); yy<std::min(y+h*scale, clipY1); ++yy) {
+        const uint8_t* row=rgb+((yy-y)/scale)*w*3;
+        for (int xx=std::max(x, clipX0); xx<std::min(x+w*scale, clipX1); ++xx) {
+            const uint8_t* p=row+((xx-x)/scale)*3;
+            canvas[yy*W+xx]=0xff000000u | uint32_t(p[2])<<16 | uint32_t(p[1])<<8 | p[0];
+        }
+    }
 }
 
 void fillRound(int x, int y, int w, int h, int r, Col c) {
@@ -165,6 +184,7 @@ void drawText(const Fnt& f, std::string s, int x, int y, Col c, int maxW, int al
     }
 }
 
+#ifndef HOST_TEST
 void present() {
     u32 stride;
     uint32_t* fb = (uint32_t*)framebufferBegin(&g_fb, &stride);
@@ -198,13 +218,29 @@ bool initialize() {
     if (!g_fontOk) sfm_diag::write("ERRO", "Falha ao carregar fonte da interface");
     return g_fontOk;
 }
+#else
+bool initializePreview(const std::string& fontPath) {
+    static std::vector<unsigned char> font;
+    std::ifstream input(fontPath, std::ios::binary);
+    font.assign(std::istreambuf_iterator<char>(input), {});
+    if (font.empty() || !stbtt_InitFont(&g_info, font.data(), 0)) return false;
+    canvas=static_cast<uint32_t*>(calloc(size_t(W)*H, 4));
+    fS=makeFnt(21); fM=makeFnt(26); fL=makeFnt(34);
+    return g_fontOk=canvas!=nullptr;
+}
+const uint32_t* previewPixels() { return canvas; }
+void present() {}
+#endif
 void shutdown() {
     for (auto& entry : g_glyphs) stbtt_FreeBitmap(entry.second.bmp, nullptr);
     g_glyphs.clear();
+#ifndef HOST_TEST
     if (framebufferReady) framebufferClose(&g_fb);
     framebufferReady = false;
-    free(canvas); canvas = nullptr;
     if (plReady) plExit();
-    plReady = false; g_fontOk = false;
+    plReady = false;
+#endif
+    free(canvas); canvas = nullptr;
+    g_fontOk = false;
 }
 }
